@@ -1,0 +1,1 @@
+# Backend package for Visual Search API
