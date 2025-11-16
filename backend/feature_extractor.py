@@ -1,73 +1,59 @@
-import tensorflow as tf
-from tensorflow.keras.applications import ResNet50
-from tensorflow.keras.applications.resnet50 import preprocess_input
-from tensorflow.keras.preprocessing import image
 import numpy as np
+import torch
+import open_clip
 from PIL import Image
+from contextlib import nullcontext
+
+from .gpu_utils import get_device_name
+
 
 class FeatureExtractor:
-    def __init__(self, model_name='resnet50'):
+    def __init__(self, model_name: str = "ViT-B-32", pretrained: str = "openai"):
         """
-        Initialize feature extractor with pre-trained model
+        Initialize CLIP-based feature extractor.
         """
         self.model_name = model_name
-        self.target_size = (224, 224)
-        
-        # Load pre-trained ResNet50 without top classification layer
-        self.model = ResNet50(
-            weights='imagenet',
-            include_top=False,
-            pooling='avg',  # Global average pooling
-            input_shape=(224, 224, 3)
+        self.pretrained = pretrained
+
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        else:
+            self.device = torch.device("cpu")
+
+        self.model, _, self.preprocess = open_clip.create_model_and_transforms(
+            model_name,
+            pretrained=pretrained,
         )
-        
-        self.feature_dim = 2048  # ResNet50 output dimension
-        
-        print(f"Loaded {model_name} model for feature extraction")
-    
-    def preprocess_image(self, img: Image.Image) -> np.ndarray:
-        """
-        Preprocess PIL Image for model input
-        """
-        # Resize image
-        img = img.resize(self.target_size)
-        
-        # Convert to array
-        img_array = image.img_to_array(img)
-        
-        # Add batch dimension
-        img_array = np.expand_dims(img_array, axis=0)
-        
-        # Preprocess for ResNet50
-        img_array = preprocess_input(img_array)
-        
-        return img_array
-    
-    def extract_features(self, img: Image.Image) -> np.ndarray:
-        """
-        Extract feature vector from image
-        """
-        # Preprocess
-        processed_img = self.preprocess_image(img)
-        
-        # Extract features
-        features = self.model.predict(processed_img, verbose=0)
-        
-        # Normalize features for cosine similarity
-        features = features / np.linalg.norm(features)
-        
-        return features.flatten()
-    
-    def extract_features_batch(self, images: list) -> np.ndarray:
-        """
-        Extract features from multiple images
-        """
-        processed_images = [self.preprocess_image(img) for img in images]
-        batch = np.vstack(processed_images)
-        
-        features = self.model.predict(batch, verbose=0)
-        
-        # Normalize each feature vector
-        features = features / np.linalg.norm(features, axis=1, keepdims=True)
-        
+        self.model.to(self.device)
+        self.model.eval()
+
+        self.feature_dim = self.model.visual.output_dim
+
+        device = get_device_name()
+        print(f"Loaded CLIP {model_name} ({pretrained}) for feature extraction on {device}")
+
+    def _prepare_tensor(self, img: np.ndarray) -> torch.Tensor:
+        pil_img = Image.fromarray(img)
+        tensor = self.preprocess(pil_img).unsqueeze(0).to(self.device)
+        return tensor
+
+    def _encode_batch(self, batch: torch.Tensor) -> np.ndarray:
+        autocast_ctx = (
+            torch.autocast(device_type="cuda", enabled=True)
+            if self.device.type == "cuda"
+            else nullcontext()
+        )
+        with torch.no_grad(), autocast_ctx:
+            embeddings = self.model.encode_image(batch)
+        embeddings = embeddings / embeddings.norm(dim=-1, keepdim=True)
+        return embeddings.cpu().numpy()
+
+    def extract_features(self, img: np.ndarray) -> np.ndarray:
+        tensor = self._prepare_tensor(img)
+        features = self._encode_batch(tensor)[0]
         return features
+
+    def extract_features_batch(self, images: list[np.ndarray]) -> np.ndarray:
+        tensors = [self._prepare_tensor(img) for img in images]
+        batch = torch.cat(tensors, dim=0)
+        return self._encode_batch(batch)

@@ -1,192 +1,75 @@
-# 🔍 Visual Search - AI as a Service
+﻿# Visual Search
 
-A computer vision project that allows users to upload product images and find visually similar items from a catalog using deep learning.
+Find visually similar catalog items by uploading an image. The backend extracts CLIP ViT-B/32 embeddings with PyTorch/OpenCLIP, normalizes them, and performs cosine search with FAISS. The React frontend provides drag‑and‑drop upload, backend readiness checks, and similarity visualizations.
 
-## 🌟 Features
+## Architecture
+- **Backend** (`backend/`): FastAPI, PyTorch, OpenCLIP, OpenCV, FAISS. `feature_extractor.py` wraps CLIP, `similarity_search.py` manages the FAISS index on disk (`data/catalog_index.*`), and `main.py` exposes the API plus static catalog assets under `/data`.
+- **Frontend** (`frontend/`): React 18 single-page app with components such as `ImageUpload` and `SearchResults` in `src/components/`.
+- **Scripts** (`scripts/`):
+  - `run.bat` / `run.sh` bootstrap uv, create a Python 3.11 virtualenv, install dependencies, call `scripts/install_pytorch.py`, ensure `data/catalog/`, and launch backend/frontend dev servers.
+  - `scripts/install_pytorch.py` inspects `nvidia-smi` and installs the right PyTorch + Torchvision wheel (CUDA 11.8 when available, CPU otherwise) and OpenCLIP.
+  - `scripts/download_pass_catalog.py` downloads random samples from the PASS dataset (parallelized) into `data/catalog/`.
 
-- **Image-based Search**: Upload any product image to find similar items
-- **Deep Learning**: Uses ResNet50 pre-trained on ImageNet for feature extraction
-- **Fast Similarity Search**: FAISS (Facebook AI Similarity Search) for efficient vector search
-- **Modern UI**: Beautiful React frontend with drag-and-drop upload
-- **RESTful API**: FastAPI backend with comprehensive endpoints
-- **Real-time Results**: Get similarity scores and ranked results instantly
+## Prerequisites
+- Python 3.8–3.11 (3.11 recommended). On Windows install Python 3.11 with the `py` launcher and run the scripts from a shell *without* an active virtualenv.
+- [`uv`](https://docs.astral.sh/uv/) CLI.
+- Node.js 16+.
+- Optional: `nvidia-smi` (GPU acceleration). The backend works on CPU if CUDA is absent.
 
-## 🏗️ Architecture
-
-### Backend
-- **Framework**: FastAPI
-- **Feature Extraction**: TensorFlow + ResNet50
-- **Vector Search**: FAISS
-- **Image Processing**: Pillow
-
-### Frontend
-- **Framework**: React 18
-- **Upload**: react-dropzone
-- **HTTP Client**: Axios
-- **Styling**: Custom CSS with modern design
-
-## 📋 Prerequisites
-
-- Python 3.8+
-- Node.js 16+
-- pip
-- npm or yarn
-
-## 🚀 Installation
-
-### Backend Setup
-
-```bash
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Create data directory for catalog
-mkdir -p data/catalog
-
-# Add some product images to data/catalog/
-# Images should be named descriptively (e.g., red_sneakers.jpg)
+## Quick Start
+### Automated (recommended)
+```powershell
+# Windows
+run.bat
 ```
-
-### Frontend Setup
-
 ```bash
+# macOS / Linux / WSL
+chmod +x run.sh
+./run.sh
+```
+The script selects a compatible Python interpreter, recreates `venv/` if needed, installs backend dependencies via `uv`, runs the PyTorch installer (CUDA-aware), ensures `data/catalog/` exists, installs frontend deps on first run, and starts uvicorn + `npm start`.
+
+### Manual Workflow
+```bash
+# Backend
+python -m venv venv
+source venv/bin/activate  # venv\Scripts\activate on Windows
+uv pip install --python "$VIRTUAL_ENV/bin/python" -r requirements.txt
+python scripts/install_pytorch.py  # add --force-cpu to skip CUDA
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+
+# Frontend
 cd frontend
 npm install
-```
-
-## 🎯 Running the Application
-
-### Start Backend Server
-
-```bash
-# From project root
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-The API will be available at `http://localhost:8000`
-
-API Documentation: `http://localhost:8000/docs`
-
-### Start Frontend Development Server
-
-```bash
-cd frontend
 npm start
 ```
 
-The app will open at `http://localhost:3000`
-
-## 📖 API Endpoints
-
-### `POST /search`
-Upload an image and get similar products
-- **Input**: Image file (multipart/form-data)
-- **Query Params**: `top_k` (number of results, default: 10)
-- **Output**: Array of SearchResult with similarity scores
-
-### `POST /add-product`
-Add a new product to the catalog
-- **Input**: Image file + metadata (product_id, name, category, price)
-- **Output**: Success message with product_id
-
-### `GET /catalog`
-Get all products in the catalog
-- **Output**: Array of Product objects
-
-### `GET /stats`
-Get catalog statistics
-- **Output**: Total products, model info, feature dimensions
-
-## 🎨 Usage
-
-1. **Prepare Catalog**: Add product images to `data/catalog/`
-2. **Start Services**: Run both backend and frontend servers
-3. **Upload Image**: Drag & drop or click to upload a product image
-4. **View Results**: See visually similar products ranked by similarity
-
-## 🔧 Configuration
-
-### Backend
-Edit `backend/main.py` to customize:
-- CORS settings
-- Model selection
-- Default search parameters
-
-### Frontend
-Create `.env` file in `frontend/` directory:
-```
-REACT_APP_API_URL=http://localhost:8000
-```
-
-## 📊 How It Works
-
-1. **Feature Extraction**: 
-   - Images are processed through ResNet50
-   - 2048-dimensional feature vectors are extracted
-   - Vectors are normalized for cosine similarity
-
-2. **Indexing**:
-   - Catalog images are indexed on startup
-   - FAISS creates an efficient search structure
-   - Supports real-time additions
-
-3. **Similarity Search**:
-   - Query image features are compared to catalog
-   - L2 distance is computed
-   - Results are ranked by similarity
-
-## 🚀 Deployment
-
-### Backend (Production)
+## Catalog Data (PASS)
+Populate `data/catalog/` with public imagery:
 ```bash
-gunicorn backend.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+python scripts/download_pass_catalog.py --count 1000 --seed 123
 ```
+Flags:
+- `--workers` (default 8) controls parallel downloads.
+- `--urls` can point to a locally mirrored `pass_urls.txt`.
+- `--insecure` skips TLS validation (for corporate proxies).
 
-### Frontend (Production)
-```bash
-cd frontend
-npm run build
-# Serve the build/ directory with nginx or your preferred static server
-```
+On startup the backend checks whether `data/catalog_index.*` matches the current files; it rebuilds the FAISS cache automatically if files changed, were removed, or the embedding dimension differs.
 
-## 🛠️ Customization
+## API & UI Endpoints
+- Frontend SPA: http://localhost:3000
+- REST API root: http://localhost:8000
+- Interactive docs: http://localhost:8000/docs
+- Key routes: `POST /search`, `POST /add-product`, `GET /catalog`, `GET /stats`
 
-### Use Different Model
-Edit `backend/feature_extractor.py`:
-```python
-# Replace ResNet50 with VGG16, InceptionV3, etc.
-from tensorflow.keras.applications import VGG16
-self.model = VGG16(weights='imagenet', include_top=False, pooling='avg')
-```
+## GPU Acceleration
+`scripts/install_pytorch.py` prefers CUDA 11.8 wheels when `nvidia-smi` exists; otherwise it installs CPU wheels. At runtime `backend/gpu_utils.py` logs the detected accelerator (CUDA, MPS, or CPU). No TensorFlow/DirectML code remains.
 
-### Adjust Search Algorithm
-Edit `backend/similarity_search.py`:
-```python
-# Use cosine similarity instead of L2
-self.index = faiss.IndexFlatIP(feature_dim)  # Inner Product
-```
+## Troubleshooting
+- **Python version errors**: ensure `py -3.11` (Windows) or `python3.11` (Unix) is installed; PyTorch wheels are only available for 3.8–3.11.
+- **Missing frontend assets**: delete `frontend/node_modules` and rerun `npm install`.
+- **Image 404s / duplicates**: confirm referenced files exist under `data/catalog/` and restart the backend so the FAISS cache refreshes.
+- **PyTorch install failures**: rerun `python scripts/install_pytorch.py --force-cpu` inside `venv` or follow https://pytorch.org/get-started/locally/ for custom CUDA builds.
 
-## 📈 Performance
-
-- **Feature Extraction**: ~100ms per image (CPU)
-- **Search**: <10ms for 10K products
-- **Index Building**: ~1s per 100 images
-
-## 🤝 Contributing
-
-Contributions welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-MIT License
-
-## 🙏 Acknowledgments
-
-- ResNet50 by Microsoft Research
-- FAISS by Facebook AI Research
-- FastAPI framework
-- React community
-
----
-
-**Built with ❤️ using AI and Deep Learning**
+## Contributing
+Follow the service structure above, keep functions typed, prefer async in the frontend when calling Axios, and add Pytest / React Testing Library smoke tests alongside new features. Document any `.env` changes and avoid committing large binaries or proprietary datasets.

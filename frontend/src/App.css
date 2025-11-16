@@ -36,6 +36,13 @@
   padding: 4rem 2rem;
 }
 
+.backend-waiting {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  margin-bottom: 2rem;
+}
+
 .spinner {
   width: 60px;
   height: 60px;
@@ -53,6 +60,16 @@
 .loading p {
   font-size: 1.2rem;
   opacity: 0.9;
+}
+
+.status-note {
+  font-size: 0.95rem;
+  opacity: 0.75;
+}
+
+.status-note.error {
+  color: #ffb3c1;
+  opacity: 1;
 }
 
 .App-footer {

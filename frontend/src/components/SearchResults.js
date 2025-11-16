@@ -3,6 +3,22 @@ import './SearchResults.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
+function normalizeImagePath(product) {
+  const path =
+    product.image_path && product.image_path.length > 0
+      ? product.image_path
+      : `data/catalog/${product.id}.jpg`;
+
+  const normalized = path.replace(/\\/g, '/');
+  if (normalized.startsWith('data/')) {
+    return normalized;
+  }
+  if (normalized.startsWith('/')) {
+    return `data${normalized}`;
+  }
+  return `data/${normalized}`;
+}
+
 function SearchResults({ results, queryImage }) {
   return (
     <div className="results-container">
@@ -23,7 +39,7 @@ function SearchResults({ results, queryImage }) {
             
             <div className="image-container">
               <img
-                src={`${API_URL}/${result.product.image_path}`}
+                src={`${API_URL}/${normalizeImagePath(result.product)}`}
                 alt={result.product.name}
                 onError={(e) => {
                   e.target.onerror = null;

@@ -1,21 +1,23 @@
 import faiss
 import numpy as np
-from typing import List, Tuple
+from typing import List
 import os
-from PIL import Image
+import cv2
 import pickle
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 from .models import Product, SearchResult
 
 class SimilaritySearchEngine:
-    def __init__(self, feature_dim: int = 2048):
+    def __init__(self, feature_dim: int = 512):
         """
         Initialize FAISS index for similarity search
         """
         self.feature_dim = feature_dim
         
-        # Use L2 distance (can also use IndexFlatIP for inner product/cosine)
-        self.index = faiss.IndexFlatL2(feature_dim)
+        # Use cosine similarity via inner product
+        self.index = faiss.IndexFlatIP(feature_dim)
         
         # Store product metadata
         self.products: List[Product] = []
@@ -27,13 +29,13 @@ class SimilaritySearchEngine:
         """
         Add a product to the search index
         """
-        # Add to FAISS index
-        features_2d = features.reshape(1, -1).astype('float32')
+        normalized = self._normalize_vector(features)
+        features_2d = normalized.reshape(1, -1).astype("float32")
         self.index.add(features_2d)
         
         # Store metadata
         self.products.append(product)
-        self.feature_vectors.append(features)
+        self.feature_vectors.append(normalized)
     
     def search(
         self,
@@ -47,15 +49,10 @@ class SimilaritySearchEngine:
             return []
         
         # Ensure correct shape and type
-        query_features = query_features.reshape(1, -1).astype('float32')
+        query_features = self._normalize_vector(query_features).reshape(1, -1).astype("float32")
         
-        # Search
-        distances, indices = self.index.search(query_features, min(top_k, self.index.ntotal))
-        
-        # Convert distances to similarity scores (inverse of L2 distance)
-        # Normalize to 0-1 range
-        max_dist = distances[0].max() if len(distances[0]) > 0 else 1.0
-        similarities = 1 - (distances[0] / (max_dist + 1e-6))
+        scores, indices = self.index.search(query_features, min(top_k, self.index.ntotal))
+        similarities = (np.clip(scores[0], -1.0, 1.0) + 1.0) / 2.0
         
         # Build results
         results = []
@@ -74,45 +71,72 @@ class SimilaritySearchEngine:
     def build_index_from_directory(
         self,
         directory: str,
-        feature_extractor
+        feature_extractor,
+        batch_size: int = 32,
+        max_workers: int = 4
     ):
         """
-        Build index from images in a directory
+        Build index from images in a directory using batched feature extraction.
         """
         if not os.path.exists(directory):
             print(f"Directory {directory} does not exist")
             return
         
         image_extensions = {'.jpg', '.jpeg', '.png', '.bmp'}
+        filepaths = [
+            os.path.join(directory, filename)
+            for filename in os.listdir(directory)
+            if os.path.splitext(filename)[1].lower() in image_extensions
+        ]
         
-        for filename in os.listdir(directory):
-            filepath = os.path.join(directory, filename)
-            
-            # Check if file is an image
-            ext = os.path.splitext(filename)[1].lower()
-            if ext not in image_extensions:
-                continue
-            
-            try:
-                # Load image
-                img = Image.open(filepath).convert('RGB')
+        if not filepaths:
+            print(f"No images found in {directory}")
+            return
+        
+        def load_image(path: str):
+            img = cv2.imread(path)
+            if img is None:
+                raise ValueError("Failed to read image")
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            product_id = os.path.splitext(os.path.basename(path))[0]
+            product = Product(
+                id=product_id,
+                name=product_id.replace('_', ' ').title(),
+                image_path=Path(path).as_posix()
+            )
+            return product, img
+        
+        batch_products: List[Product] = []
+        batch_images: List[np.ndarray] = []
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_path = {executor.submit(load_image, fp): fp for fp in filepaths}
+            for future in as_completed(future_to_path):
+                filepath = future_to_path[future]
+                try:
+                    product, img = future.result()
+                    batch_products.append(product)
+                    batch_images.append(img)
+                except Exception as exc:
+                    print(f"Error processing {filepath}: {exc}")
+                    continue
                 
-                # Extract features
-                features = feature_extractor.extract_features(img)
-                
-                # Create product
-                product_id = os.path.splitext(filename)[0]
-                product = Product(
-                    id=product_id,
-                    name=product_id.replace('_', ' ').title(),
-                    image_path=filepath
-                )
-                
-                # Add to index
+                if len(batch_images) >= batch_size:
+                    self._process_batch(batch_products, batch_images, feature_extractor)
+                    batch_products, batch_images = [], []
+        
+        if batch_images:
+            self._process_batch(batch_products, batch_images, feature_extractor)
+
+    def _process_batch(self, products: List[Product], images: List[np.ndarray], feature_extractor):
+        if not products:
+            return
+        try:
+            features_batch = feature_extractor.extract_features_batch(images)
+            for product, features in zip(products, features_batch):
                 self.add_product(product, features)
-                
-            except Exception as e:
-                print(f"Error processing {filename}: {e}")
+        except Exception as exc:
+            print(f"Error extracting batch features: {exc}")
     
     def get_all_products(self) -> List[Product]:
         """
@@ -152,3 +176,11 @@ class SimilaritySearchEngine:
             data = pickle.load(f)
             self.products = data['products']
             self.feature_vectors = data['feature_vectors']
+            if self.feature_vectors:
+                self.feature_dim = len(self.feature_vectors[0])
+
+    def _normalize_vector(self, vector: np.ndarray) -> np.ndarray:
+        norm = np.linalg.norm(vector)
+        if norm == 0:
+            return vector.astype("float32")
+        return (vector / norm).astype("float32")

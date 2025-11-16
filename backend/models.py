@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 
 class Product(BaseModel):
@@ -7,7 +7,7 @@ class Product(BaseModel):
     image_path: str
     category: Optional[str] = None
     price: Optional[float] = None
-    metadata: Optional[Dict[str, Any]] = {}
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 class SearchResult(BaseModel):
     product: Product
