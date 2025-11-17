@@ -102,6 +102,7 @@ Each pass will add an entry below summarizing the files touched, rationale, and 
 | --- | --- | --- | --- |
 | 2025-11-17 | Phase 1 | Added shared FastAPI upload validation/decoding helpers, normalized query feature computation, and stricter parsing utilities. Both `/search` and `/add-product` now rely on the same vetted code paths. | Manual regression pending; add unit tests for helpers. |
 | 2025-11-17 | Phase 1 | Centralized catalog directory/id handling and image persistence helpers; removed duplicate logic from `/add-product` and ensured startup consistently prepares `data/catalog`. | Smoke test uploads + search when convenient. |
+| 2025-11-17 | Phase 1 | Refined `SimilaritySearchEngine.build_index_from_directory` to use `pathlib`, shared extension constants, and clearer batching/logging. Removed `os` dependency and simplified file handling. | Run catalog rebuild to verify behavior when possible. |
 
 ---
 

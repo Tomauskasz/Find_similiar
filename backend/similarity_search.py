@@ -1,6 +1,6 @@
 import faiss
 import numpy as np
-from typing import List, Dict, Optional, Iterable
+from typing import List, Dict, Optional
 import cv2
 import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -102,63 +102,59 @@ class SimilaritySearchEngine:
     
     def build_index_from_directory(
         self,
-        directory: str,
+        directory: str | Path,
         feature_extractor,
         batch_size: int = 32,
-        max_workers: int = 4
+        max_workers: int = 4,
     ):
         """
         Build index from images in a directory using batched feature extraction.
         """
-        if not os.path.exists(directory):
-            print(f"Directory {directory} does not exist")
+        root = Path(directory)
+        if not root.exists():
+            print(f"Directory {root} does not exist")
             return
-        
+
+        image_paths = [path for path in root.iterdir() if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS]
+        if not image_paths:
+            print(f"No images found in {root}")
+            self.reset()
+            return
+
         self.reset()
-        
-        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp'}
-        filepaths = [
-            os.path.join(directory, filename)
-            for filename in os.listdir(directory)
-            if os.path.splitext(filename)[1].lower() in image_extensions
-        ]
-        
-        if not filepaths:
-            print(f"No images found in {directory}")
-            return
-        
-        def load_image(path: str):
-            img = cv2.imread(path)
+
+        def load_image(path: Path):
+            img = cv2.imread(str(path))
             if img is None:
                 raise ValueError("Failed to read image")
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            product_id = os.path.splitext(os.path.basename(path))[0]
+            product_id = path.stem
             product = Product(
                 id=product_id,
-                name=product_id.replace('_', ' ').title(),
-                image_path=Path(path).as_posix()
+                name=product_id.replace("_", " ").title(),
+                image_path=path.as_posix(),
             )
             return product, img
-        
+
         batch_products: List[Product] = []
         batch_images: List[np.ndarray] = []
-        
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_path = {executor.submit(load_image, fp): fp for fp in filepaths}
+            future_to_path = {executor.submit(load_image, path): path for path in image_paths}
             for future in as_completed(future_to_path):
-                filepath = future_to_path[future]
+                path = future_to_path[future]
                 try:
                     product, img = future.result()
                     batch_products.append(product)
                     batch_images.append(img)
                 except Exception as exc:
-                    print(f"Error processing {filepath}: {exc}")
+                    print(f"Error processing {path}: {exc}")
                     continue
-                
+
                 if len(batch_images) >= batch_size:
                     self._process_batch(batch_products, batch_images, feature_extractor)
                     batch_products, batch_images = [], []
-        
+
         if batch_images:
             self._process_batch(batch_products, batch_images, feature_extractor)
 
