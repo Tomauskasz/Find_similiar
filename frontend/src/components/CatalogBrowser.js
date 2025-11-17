@@ -1,8 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './CatalogBrowser.css';
 import { normalizeImagePath } from '../utils/image';
 import { createApiClient } from '../services/apiClient';
 import useCatalog from '../hooks/useCatalog';
+import CatalogCard from './CatalogCard';
+import CatalogHero from './CatalogHero';
 
 const DEFAULT_PAGE_SIZE = 40;
 const DEFAULT_MAX_PAGE_SIZE = 200;
@@ -21,8 +23,6 @@ const CatalogBrowser = ({
   const [selectedItem, setSelectedItem] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
-  const [isUploadHover, setIsUploadHover] = useState(false);
-  const [isSelectorHover, setIsSelectorHover] = useState(false);
   const [isPageSizeMenuOpen, setIsPageSizeMenuOpen] = useState(false);
   const [pageDisplayValue, setPageDisplayValue] = useState('');
   const [pageInputError, setPageInputError] = useState('');
@@ -187,19 +187,13 @@ const CatalogBrowser = ({
       );
     }
     return items.map((item) => (
-      <article key={item.id} className="catalog-card">
-        <button type="button" className="catalog-card__thumb" onClick={() => setSelectedItem(item)}>
-          <img src={`${apiUrl}/${normalizeImagePath(item.image_path)}`} alt={item.name} />
-        </button>
-        <div className="catalog-card__meta">
-          <div>
-            <p className="catalog-card__name">{item.name || 'Untitled asset'}</p>
-          </div>
-          <button type="button" className="ghost-button danger" onClick={() => handleDelete(item.id)}>
-            Delete
-          </button>
-        </div>
-      </article>
+      <CatalogCard
+        key={item.id}
+        item={item}
+        apiUrl={apiUrl}
+        onSelect={setSelectedItem}
+        onDelete={handleDelete}
+      />
     ));
   };
 
@@ -207,69 +201,20 @@ const CatalogBrowser = ({
 
   return (
     <section className={dashboardClassName}>
-      <div className="catalog-hero">
-        <div className="catalog-hero__stats">
-          <div className="stat-card stat-card--hoverable">
-            <span>Total items</span>
-            <strong>{totalItems}</strong>
-          </div>
-          <div className={`stat-card stat-card--selector${isSelectorHover ? ' hover-active' : ''}`}>
-            <span className="stat-card__label">Images per page</span>
-            <div
-              className={`page-size-dropdown ${isPageSizeMenuOpen ? 'open' : ''}`}
-              ref={pageSizeDropdownRef}
-            >
-              <button
-                type="button"
-                className="page-size-dropdown__toggle"
-                onClick={() => setIsPageSizeMenuOpen((prev) => !prev)}
-                aria-haspopup="listbox"
-                aria-expanded={isPageSizeMenuOpen}
-                onMouseEnter={() => setIsSelectorHover(true)}
-                onMouseLeave={() => setIsSelectorHover(false)}
-              >
-                <span className="page-size-dropdown__value">{pageSize}</span>
-                <span className="page-size-dropdown__chevron" aria-hidden="true" />
-              </button>
-              {isPageSizeMenuOpen && (
-                <div className="page-size-dropdown__menu" role="listbox" aria-label="Select images per page">
-                  {pageSizeOptions.map((option) => (
-                    <button
-                      type="button"
-                      key={option}
-                      className={`page-size-dropdown__option ${option === pageSize ? 'active' : ''}`}
-                      onClick={() => handlePageSizeChange(option)}
-                      role="option"
-                      aria-selected={option === pageSize}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className={`stat-card stat-card--upload${isUploadHover ? ' hover-active' : ''}`}>
-            <label
-              className="upload-chip upload-chip--stretch"
-              onMouseEnter={() => setIsUploadHover(true)}
-              onMouseLeave={() => setIsUploadHover(false)}
-            >
-              <input
-                type="file"
-                accept={acceptedFormats.join(',')}
-                onChange={handleUpload}
-                disabled={!backendReady || uploading}
-              />
-              <span>{uploading ? 'Uploading...' : 'Add to catalog'}</span>
-            </label>
-            <p className="hint">
-              Accepted: {acceptedFormats.map((ext) => ext.replace('.', '').toUpperCase()).join(', ')}
-            </p>
-            {uploadError && <p className="field-error">{uploadError}</p>}
-          </div>
-        </div>
-      </div>
+      <CatalogHero
+        totalItems={totalItems}
+        pageSize={pageSize}
+        pageSizeOptions={pageSizeOptions}
+        pageSizeDropdownRef={pageSizeDropdownRef}
+        isPageSizeMenuOpen={isPageSizeMenuOpen}
+        onTogglePageSizeMenu={() => setIsPageSizeMenuOpen((prev) => !prev)}
+        onPageSizeChange={handlePageSizeChange}
+        acceptedFormats={acceptedFormats}
+        uploading={uploading}
+        uploadError={uploadError}
+        onUpload={handleUpload}
+        backendReady={backendReady}
+      />
 
       {catalogError && <div className="error-banner">{catalogError}</div>}
 

@@ -8,9 +8,14 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
-from .utils.cli import build_parser, non_negative_float, positive_int
-from .utils.retry import run_with_retry
+if __package__ in {None, ""}:
+    SCRIPT_DIR = Path(__file__).resolve().parent
+    sys.path.insert(0, str(SCRIPT_DIR.parent))
+
+from scripts.utils.cli import build_parser, non_negative_float, positive_int  # type: ignore
+from scripts.utils.retry import run_with_retry  # type: ignore
 
 CUDA_INDEX = "https://download.pytorch.org/whl/cu118"
 CPU_INDEX = "https://download.pytorch.org/whl/cpu"

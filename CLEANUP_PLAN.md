@@ -70,7 +70,7 @@ This document tracks the multi-pass refactor and cleanup effort for the Visual S
    - Audit `useState` usage; collapse related state into reducers where necessary.
    - Extract repeated API calling logic into hooks (`useBackendStats`, `useCatalog`). ✅ 2025-11-17: `useCatalog` now centralizes catalog fetching/loading/error state for `CatalogBrowser`.
 2. **Components:**
-   - Break down oversized components (e.g., `CatalogBrowser`, `App`).
+   - Break down oversized components (e.g., `CatalogBrowser`, `App`). ✅ 2025-11-17: Split `CatalogBrowser` into `CatalogHero` + `CatalogCard` and moved hover logic locally to reduce prop churn.
    - Remove unused props/styles.
    - Ensure modals, sliders, and uploads share accessible patterns.
 3. **Networking:**
@@ -101,6 +101,7 @@ Each pass will add an entry below summarizing the files touched, rationale, and 
 | Date | Phase | Summary | Notes |
 | --- | --- | --- | --- |
 | 2025-11-17 | Phase 2 | Added shared CLI/retry utilities, PASS catalog dry-run mode, and pip retry flags so download/install scripts share consistent backoff behavior. | Exercise both scripts when convenient to verify retry UX + dry-run output. |
+| 2025-11-17 | Phase 3 | Broke `CatalogBrowser` into `CatalogHero` + `CatalogCard` subcomponents to simplify UI logic and confine hover/upload state locally. | Reconfirm catalog pagination, uploads, deletes, and modal actions. |
 | 2025-11-17 | Phase 3 | Introduced `useCatalog` and refactored `CatalogBrowser` to consume it, shrinking local state and centralizing fetch/loading/error logic. | Re-test catalog pagination, uploads, deletes, and the "Find matches" action. |
 | 2025-11-17 | Phase 1 | Harmonized `SimilaritySearchEngine` normalization, scoring, and count paths by sharing cosine helpers, caching feature matrices, and trimming unused metadata. | Add unit tests to ensure `count_matches` mirrors `search` thresholds. |
 | 2025-11-17 | Phase 1 | Tightened `AppConfig` validation (crop ratios, search bounds, pagination limits, normalized upload formats) and documented every setting/env override in the README. | Confirm startup succeeds with custom `.env` values; add config-focused tests later. |

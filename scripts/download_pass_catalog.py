@@ -8,14 +8,20 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Iterable
 
-from .utils.cli import (
+import sys
+
+if __package__ in {None, ""}:
+    SCRIPT_DIR = Path(__file__).resolve().parent
+    sys.path.insert(0, str(SCRIPT_DIR.parent))
+
+from scripts.utils.cli import (  # type: ignore
     build_parser,
     non_negative_float,
     non_negative_int,
     positive_int,
 )
-from .utils.io import download_binary, ensure_directory, fetch_text
-from .utils.retry import run_with_retry
+from scripts.utils.io import download_binary, ensure_directory, fetch_text  # type: ignore
+from scripts.utils.retry import run_with_retry  # type: ignore
 
 PASS_URL_LIST = "https://www.robots.ox.ac.uk/~vgg/research/pass/pass_urls.txt"
 
