@@ -1,13 +1,14 @@
 import faiss
 import numpy as np
-from typing import List, Dict, Optional
-import os
+from typing import List, Dict, Optional, Iterable
 import cv2
 import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from .models import Product, SearchResult
+
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".tif", ".webp"}
 
 class SimilaritySearchEngine:
     def __init__(self, feature_dim: int = 512):

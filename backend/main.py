@@ -5,7 +5,6 @@ from fastapi.staticfiles import StaticFiles
 import numpy as np
 import cv2
 from typing import List
-import os
 from pathlib import Path
 import math
 
@@ -42,6 +41,7 @@ SUPPORTED_FORMATS_MESSAGE = (
     + app_config.format_supported_extensions()
     + "."
 )
+UPLOAD_DECODE_ERROR = "Unable to decode image. Please try another file."
 
 app = FastAPI(title="Visual Search API", version="1.0.0")
 static_files_app = StaticFiles(directory="data")
@@ -77,6 +77,80 @@ async def get_asset(requested_path: str):
         raise HTTPException(status_code=404, detail="Asset not found.")
     response = FileResponse(candidate)
     return _add_cors_headers(response)
+
+
+def _validate_upload_file(upload: UploadFile) -> None:
+    suffix = Path(upload.filename or "").suffix.lower()
+    if suffix and suffix not in app_config.supported_image_formats:
+        raise HTTPException(status_code=415, detail=SUPPORTED_FORMATS_MESSAGE)
+    content_type = (upload.content_type or "").lower()
+    if not content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"File must be an image. Supported formats: {app_config.format_supported_extensions()}.",
+        )
+
+
+async def _decode_upload_image(
+    upload: UploadFile,
+    *,
+    failure_detail: str = SUPPORTED_FORMATS_MESSAGE,
+    failure_status: int = 415,
+) -> np.ndarray:
+    contents = await upload.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if image is None:
+        raise HTTPException(status_code=failure_status, detail=failure_detail)
+    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+
+def _build_query_features(image: np.ndarray) -> np.ndarray:
+    variants = generate_query_variants(image)
+    feature_list = [feature_extractor.extract_features(variant) for variant in variants]
+    query_features = np.mean(feature_list, axis=0)
+    norm = np.linalg.norm(query_features)
+    if norm > 0:
+        query_features = query_features / norm
+    return query_features
+
+
+def _parse_positive_int(value, *, param_name: str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"Parameter '{param_name}' must be an integer.")
+    if parsed < 1:
+        raise HTTPException(status_code=400, detail=f"Parameter '{param_name}' must be >= 1.")
+    return parsed
+
+
+def _parse_similarity_threshold(value) -> float:
+    try:
+        threshold = float(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Parameter 'min_similarity' must be a float between 0 and 1.")
+    if not 0 <= threshold <= 1:
+        raise HTTPException(status_code=400, detail="Parameter 'min_similarity' must be between 0 and 1.")
+    return threshold
+
+
+def _ensure_catalog_dir() -> Path:
+    CATALOG_DIR.mkdir(parents=True, exist_ok=True)
+    return CATALOG_DIR
+
+
+def _save_catalog_image(image: np.ndarray, product_id: str) -> Path:
+    catalog_dir = _ensure_catalog_dir()
+    image_path = catalog_dir / f"{product_id}.jpg"
+    cv2.imwrite(str(image_path), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+    return image_path
+
+
+def _resolve_product_id(provided_id: str | None) -> str:
+    if provided_id:
+        return provided_id
+    return f"prod_{len(search_engine.products)}"
 
 # Configure GPU
 _, gpu_banner = bannerize_gpu_status()
@@ -140,7 +214,7 @@ def load_cached_index_if_valid() -> bool:
 @app.on_event("startup")
 async def startup_event():
     """Load existing catalog and build index"""
-    CATALOG_DIR.mkdir(parents=True, exist_ok=True)
+    _ensure_catalog_dir()
     if not load_cached_index_if_valid():
         rebuild_index_from_disk()
 
@@ -158,48 +232,12 @@ async def search_similar(
     Upload an image and get visually similar products
     """
     try:
-        # Validate file type
-        content_type = file.content_type or ""
-        suffix = Path(file.filename or "").suffix.lower()
-        if suffix and suffix not in app_config.supported_image_formats:
-            raise HTTPException(status_code=415, detail=SUPPORTED_FORMATS_MESSAGE)
+        _validate_upload_file(file)
+        image = await _decode_upload_image(file)
+        query_features = _build_query_features(image)
 
-        if not content_type.startswith("image/"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"File must be an image. Supported formats: {app_config.format_supported_extensions()}."
-            )
-        
-        # Read image with OpenCV
-        contents = await file.read()
-        nparr = np.frombuffer(contents, np.uint8)
-        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if image is None:
-            raise HTTPException(status_code=415, detail=SUPPORTED_FORMATS_MESSAGE)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        
-        variants = generate_query_variants(image)
-        feature_list = [feature_extractor.extract_features(variant) for variant in variants]
-        query_features = np.mean(feature_list, axis=0)
-        norm = np.linalg.norm(query_features)
-        if norm > 0:
-            query_features = query_features / norm
-        
-        try:
-            requested_top_k = int(top_k)
-        except (TypeError, ValueError):
-            raise HTTPException(status_code=400, detail="Parameter 'top_k' must be an integer.")
-
-        if requested_top_k < 1:
-            raise HTTPException(status_code=400, detail="Parameter 'top_k' must be >= 1.")
-
-        try:
-            similarity_threshold = float(min_similarity)
-        except (TypeError, ValueError):
-            raise HTTPException(status_code=400, detail="Parameter 'min_similarity' must be a float between 0 and 1.")
-
-        if not 0 <= similarity_threshold <= 1:
-            raise HTTPException(status_code=400, detail="Parameter 'min_similarity' must be between 0 and 1.")
+        requested_top_k = _parse_positive_int(top_k, param_name="top_k")
+        similarity_threshold = _parse_similarity_threshold(min_similarity)
 
         limit = max(1, min(requested_top_k, app_config.search_max_top_k))
         results = search_engine.search(query_features, top_k=limit)
@@ -232,23 +270,11 @@ async def add_product(
     Add a new product to the catalog
     """
     try:
-        # Read image with OpenCV
-        contents = await file.read()
-        nparr = np.frombuffer(contents, np.uint8)
-        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if image is None:
-            raise HTTPException(status_code=400, detail="Unable to decode image. Please try another file.")
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        _validate_upload_file(file)
+        image = await _decode_upload_image(file, failure_detail=UPLOAD_DECODE_ERROR, failure_status=400)
         
-        # Generate ID if not provided
-        if not product_id:
-            product_id = f"prod_{len(search_engine.products)}"
-        
-        # Save image
-        os.makedirs("data/catalog", exist_ok=True)
-        image_path = Path("data/catalog") / f"{product_id}.jpg"
-        # Convert RGB back to BGR for saving
-        cv2.imwrite(str(image_path), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+        product_id = _resolve_product_id(product_id)
+        image_path = _save_catalog_image(image, product_id)
         
         # Extract features and add to index
         features = feature_extractor.extract_features(image)
