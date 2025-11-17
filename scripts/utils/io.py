@@ -26,12 +26,14 @@ def fetch_text(source: str, *, insecure: bool = False, timeout: int = 60) -> str
         return resp.read().decode("utf-8")
 
 
-def download_binary(url: str, dest: Path, *, timeout: int = 60) -> bool:
+def download_binary(url: str, dest: Path, *, timeout: int = 60) -> Path:
+    """
+    Download the resource at `url` to `dest`. Raises RuntimeError if the request fails.
+    """
+    ensure_directory(dest.parent)
     try:
-        ensure_directory(dest.parent)
         with request.urlopen(url, timeout=timeout) as resp:
             dest.write_bytes(resp.read())
-        return True
+        return dest
     except Exception as exc:
-        print(f"[warn] failed to download {url}: {exc}")
-        return False
+        raise RuntimeError(f"failed to download {url}") from exc

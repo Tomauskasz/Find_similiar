@@ -59,16 +59,16 @@ This document tracks the multi-pass refactor and cleanup effort for the Visual S
    - Validate defaults, remove unused environment variables. ✅ 2025-11-17: Added strict Pydantic validators for ratios, pagination limits, search bounds, and normalized upload formats.
    - Document every setting in code comments and README. ✅ 2025-11-17: README now includes a full configuration table with env var names + constraints.
 
-### Phase 2 – Backend Scripts
-1. Consolidate duplicated CLI argument parsing patterns.
-2. Ensure downloads/installers share retry/backoff helpers.
+### Phase 2 - Backend Scripts
+1. Consolidate duplicated CLI argument parsing patterns. ✅ 2025-11-17: Added `scripts.utils.cli` with shared parser builder + numeric validators used by all CLI entry points.
+2. Ensure downloads/installers share retry/backoff helpers. ✅ 2025-11-17: Introduced `scripts.utils.retry.run_with_retry` and wired pip installs + PASS downloads through it.
 3. Remove scripts that simply wrap others without added value.
-4. Add dry-run options where appropriate (e.g., catalog download).
+4. Add dry-run options where appropriate (e.g., catalog download). ✅ 2025-11-17: `scripts/download_pass_catalog.py --dry-run` now previews the planned URLs/files.
 
 ### Phase 3 – Frontend App & Components
 1. **State Management:**
    - Audit `useState` usage; collapse related state into reducers where necessary.
-   - Extract repeated API calling logic into hooks (`useBackendStats`, `useCatalog`).
+   - Extract repeated API calling logic into hooks (`useBackendStats`, `useCatalog`). ✅ 2025-11-17: `useCatalog` now centralizes catalog fetching/loading/error state for `CatalogBrowser`.
 2. **Components:**
    - Break down oversized components (e.g., `CatalogBrowser`, `App`).
    - Remove unused props/styles.
@@ -100,6 +100,8 @@ Each pass will add an entry below summarizing the files touched, rationale, and 
 
 | Date | Phase | Summary | Notes |
 | --- | --- | --- | --- |
+| 2025-11-17 | Phase 2 | Added shared CLI/retry utilities, PASS catalog dry-run mode, and pip retry flags so download/install scripts share consistent backoff behavior. | Exercise both scripts when convenient to verify retry UX + dry-run output. |
+| 2025-11-17 | Phase 3 | Introduced `useCatalog` and refactored `CatalogBrowser` to consume it, shrinking local state and centralizing fetch/loading/error logic. | Re-test catalog pagination, uploads, deletes, and the "Find matches" action. |
 | 2025-11-17 | Phase 1 | Harmonized `SimilaritySearchEngine` normalization, scoring, and count paths by sharing cosine helpers, caching feature matrices, and trimming unused metadata. | Add unit tests to ensure `count_matches` mirrors `search` thresholds. |
 | 2025-11-17 | Phase 1 | Tightened `AppConfig` validation (crop ratios, search bounds, pagination limits, normalized upload formats) and documented every setting/env override in the README. | Confirm startup succeeds with custom `.env` values; add config-focused tests later. |
 | 2025-11-17 | Phase 1 | Centralized GPU detection behind a memoized `DeviceStatus` helper and hardened `FeatureExtractor` batch handling so tensor prep + logging stay consistent. | Validate feature extraction on CUDA/MPS/CPU paths when possible. |
@@ -124,7 +126,7 @@ Each pass will add an entry below summarizing the files touched, rationale, and 
 
 1. Prioritize Phase 1 (Backend Core) and create subtasks for the first pass.
 2. For each pass:
-   - Update the Phase Overview
+   - Update the "3. Phase Overview"
    - Update the checklist above.
    - Append an entry to the Change Log table.
    - Ensure code + documentation changes remain in sync.

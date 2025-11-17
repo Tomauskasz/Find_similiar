@@ -7,8 +7,8 @@ Find visually similar catalog items by uploading an image. The backend extracts 
 - **Frontend** (`frontend/`): React 18 single-page app with components such as `ImageUpload` and `SearchResults` in `src/components/`.
 - **Scripts** (`scripts/`):
   - `run.bat` / `run.sh` bootstrap uv, create a Python 3.11 virtualenv, install dependencies, call `scripts/install_pytorch.py`, ensure `data/catalog/`, and launch backend/frontend dev servers.
-  - `scripts/install_pytorch.py` inspects `nvidia-smi` and installs the right PyTorch + Torchvision wheel (CUDA 11.8 when available, CPU otherwise) and OpenCLIP.
-  - `scripts/download_pass_catalog.py` downloads random samples from the PASS dataset (parallelized) into `data/catalog/`.
+  - `scripts/install_pytorch.py` inspects `nvidia-smi` and installs the right PyTorch + Torchvision wheel (CUDA 11.8 when available, CPU otherwise) and OpenCLIP, with `--force-cpu`, `--pip-retries`, and `--pip-retry-delay` flags for flaky environments.
+  - `scripts/download_pass_catalog.py` downloads random samples from the PASS dataset (parallelized) into `data/catalog/`, now with shared retry logic and a `--dry-run` preview mode.
 
 ## Prerequisites
 - Python 3.8–3.11 (3.11 recommended). On Windows install Python 3.11 with the `py` launcher and run the scripts from a shell *without* an active virtualenv.
@@ -35,7 +35,7 @@ The script selects a compatible Python interpreter, recreates `venv/` if needed,
 python -m venv venv
 source venv/bin/activate  # venv\Scripts\activate on Windows
 uv pip install --python "$VIRTUAL_ENV/bin/python" -r requirements.txt
-python scripts/install_pytorch.py  # add --force-cpu to skip CUDA
+python scripts/install_pytorch.py  # add --force-cpu or tweak --pip-retries/--pip-retry-delay for flaky installs
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 # Frontend
@@ -63,6 +63,8 @@ Flags:
 - `--workers` (default 8) controls parallel downloads.
 - `--urls` can point to a locally mirrored `pass_urls.txt`.
 - `--insecure` skips TLS validation (for corporate proxies).
+- `--dry-run` prints the planned download list without fetching files.
+- `--retry-attempts` / `--retry-delay` control the backoff used for fetching the URL list and per-image downloads.
 
 On startup the backend checks whether `data/catalog_index.*` matches the current files; it rebuilds the FAISS cache automatically if files changed, were removed, or the embedding dimension differs.
 

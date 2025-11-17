@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './CatalogBrowser.css';
 import { normalizeImagePath } from '../utils/image';
 import { createApiClient } from '../services/apiClient';
+import useCatalog from '../hooks/useCatalog';
 
 const DEFAULT_PAGE_SIZE = 40;
 const DEFAULT_MAX_PAGE_SIZE = 200;
@@ -17,11 +18,6 @@ const CatalogBrowser = ({
 }) => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize || DEFAULT_PAGE_SIZE);
-  const [items, setItems] = useState([]);
-  const [totalItems, setTotalItems] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
@@ -33,6 +29,15 @@ const CatalogBrowser = ({
 
   const pageSizeDropdownRef = useRef(null);
   const apiClient = useMemo(() => createApiClient(apiUrl), [apiUrl]);
+  const {
+    items,
+    totalItems,
+    totalPages,
+    loading,
+    error: catalogError,
+    refreshCatalog,
+    setErrorMessage: setCatalogError,
+  } = useCatalog(apiClient, { enabled: backendReady, page, pageSize });
 
   const effectiveMaxPageSize = maxPageSize || DEFAULT_MAX_PAGE_SIZE;
   const acceptedFormats = supportedFormats?.length ? supportedFormats : FALLBACK_FORMATS;
@@ -50,35 +55,15 @@ const CatalogBrowser = ({
     }
   }, [page, totalPages]);
 
-  const fetchCatalog = useCallback(async () => {
-    if (!backendReady) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await apiClient.get('/catalog/items', {
-        params: { page, page_size: pageSize },
-      });
-      setItems(response.data.items || []);
-      setTotalItems(response.data.total_items || 0);
-      setTotalPages(response.data.total_pages || 0);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load catalog.');
-      console.error(err);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (!backendReady) {
+      return;
     }
-  }, [apiClient, backendReady, page, pageSize]);
-
-  useEffect(() => {
-    fetchCatalog();
-  }, [fetchCatalog]);
-
-  useEffect(() => {
     const root = document.querySelector('.catalog-dashboard');
     if (root) {
       root.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [page]);
+  }, [page, backendReady]);
 
   useEffect(() => {
     if (!isPageSizeMenuOpen) {
@@ -151,9 +136,9 @@ const CatalogBrowser = ({
         }
         return currentPage;
       });
-      fetchCatalog();
+      refreshCatalog();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to delete catalog item.');
+      setCatalogError(err.response?.data?.detail || 'Failed to delete catalog item.');
     }
   };
 
@@ -170,7 +155,7 @@ const CatalogBrowser = ({
       });
       event.target.value = '';
       setPage(1);
-      fetchCatalog();
+      refreshCatalog();
     } catch (err) {
       setUploadError(err.response?.data?.detail || 'Failed to upload image.');
       console.error(err);
@@ -286,7 +271,7 @@ const CatalogBrowser = ({
         </div>
       </div>
 
-      {error && <div className="error-banner">{error}</div>}
+      {catalogError && <div className="error-banner">{catalogError}</div>}
 
       <div className="catalog-grid">{renderCards()}</div>
       <div className="catalog-pagination-bar">
