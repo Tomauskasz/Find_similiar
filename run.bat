@@ -6,6 +6,7 @@ set "ROOT=%~dp0"
 set "VENV_DIR=%ROOT%venv"
 set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
 set "PYTHON_CMD=python"
+set "REQ_SNAPSHOT=%VENV_DIR%\requirements.snapshot"
 
 if defined VIRTUAL_ENV (
     echo Detected active virtual environment "%VIRTUAL_ENV%".
@@ -56,10 +57,24 @@ if not exist "%VENV_PYTHON%" (
 echo Activating virtual environment...
 call "%VENV_DIR%\Scripts\activate.bat"
 
-echo Installing Python dependencies...
-%UV_CMD% pip install --python "%VENV_PYTHON%" -r requirements.txt
-if errorlevel 1 goto fail_setup
-echo(
+set "NEED_DEP_INSTALL=1"
+if exist "%REQ_SNAPSHOT%" (
+    fc /b requirements.txt "%REQ_SNAPSHOT%" >nul 2>&1
+    if not errorlevel 1 (
+        set "NEED_DEP_INSTALL="
+    )
+)
+
+if defined NEED_DEP_INSTALL (
+    echo Installing Python dependencies...
+    %UV_CMD% pip install --python "%VENV_PYTHON%" -r requirements.txt
+    if errorlevel 1 goto fail_setup
+    copy /y requirements.txt "%REQ_SNAPSHOT%" >nul
+    echo(
+) else (
+    echo Python dependencies already up to date.
+    echo(
+)
 
 echo Installing PyTorch (CUDA-aware)...
 "%VENV_PYTHON%" scripts\install_pytorch.py
@@ -102,7 +117,6 @@ REM Prefer Python 3.11 from the py launcher
 py -3.11 -V >nul 2>&1
 if %errorlevel%==0 (
     set "PYTHON_CMD=py -3.11"
-    echo Using Python 3.11 via "py -3.11".
     exit /b 0
 )
 
@@ -115,7 +129,6 @@ if defined HOST_PY_VERSION (
     if "!HOST_PY_MAJOR!"=="3" (
         if !HOST_PY_MINOR! GEQ 8 if !HOST_PY_MINOR! LEQ 11 (
             set "PYTHON_CMD=python"
-            echo Using system Python !HOST_PY_VERSION!.
             exit /b 0
         )
     )

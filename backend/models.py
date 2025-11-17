@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 class Product(BaseModel):
     id: str
@@ -12,3 +12,10 @@ class Product(BaseModel):
 class SearchResult(BaseModel):
     product: Product
     similarity_score: float
+
+class CatalogPage(BaseModel):
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int
+    items: List[Product]

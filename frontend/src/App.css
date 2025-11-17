@@ -1,46 +1,104 @@
 .App {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: radial-gradient(circle at 20% 20%, #4338ca 0%, #312e81 35%, #0f172a 80%);
+  color: #f8fafc;
+  padding: 0 0 4rem;
 }
 
 .App-header {
   text-align: center;
-  padding: 3rem 2rem 2rem;
-  background: rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 3.5rem 2rem 2.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
 }
 
 .App-header h1 {
-  font-size: 3.5rem;
+  font-size: 3.75rem;
   margin: 0 0 0.5rem;
   font-weight: 800;
   letter-spacing: -1px;
 }
 
 .App-header p {
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   margin: 0;
-  opacity: 0.9;
+  opacity: 0.85;
+}
+
+.view-switcher {
+  margin-top: 2rem;
+  display: inline-flex;
+  position: relative;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  padding: 0.35rem;
+  gap: 0.35rem;
+  overflow: hidden;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.55);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.view-switcher::after {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  background: radial-gradient(circle at 30% 30%, rgba(99, 102, 241, 0.45), transparent 55%);
+  transform: rotate(25deg);
+  animation: switcherGlow 12s ease-in-out infinite;
+  opacity: 0.7;
+}
+
+.view-switcher button {
+  border: none;
+  background: transparent;
+  color: #cbd5f5;
+  font-weight: 600;
+  padding: 0.6rem 1.5rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.25s ease, color 0.25s ease, transform 0.2s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.view-switcher button.active {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #fff;
+  box-shadow: 0 12px 26px rgba(99, 102, 241, 0.45);
+  transform: translateY(-1px);
+}
+
+.view-switcher button:not(.active):hover {
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.App-header .view-switcher button:focus-visible {
+  outline: 2px solid rgba(129, 140, 248, 0.7);
+  outline-offset: 3px;
 }
 
 .App-main {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 3rem 2rem;
+  max-width: 1200px;
+  margin: -1rem auto 0;
+  padding: 0 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
 }
 
 .loading {
   text-align: center;
-  padding: 4rem 2rem;
+  padding: 3rem 2rem;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 24px;
+  box-shadow: 0 25px 60px rgba(2, 6, 23, 0.6);
 }
 
 .backend-waiting {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 16px;
-  margin-bottom: 2rem;
+  backdrop-filter: blur(18px);
 }
 
 .spinner {
@@ -58,25 +116,25 @@
 }
 
 .loading p {
-  font-size: 1.2rem;
-  opacity: 0.9;
+  font-size: 1.05rem;
+  opacity: 0.85;
 }
 
 .status-note {
   font-size: 0.95rem;
-  opacity: 0.75;
+  opacity: 0.7;
 }
 
 .status-note.error {
-  color: #ffb3c1;
+  color: #fecdd3;
   opacity: 1;
 }
 
 .App-footer {
   text-align: center;
-  padding: 2rem;
-  opacity: 0.7;
-  font-size: 0.9rem;
+  padding: 2.5rem 1rem;
+  opacity: 0.75;
+  font-size: 0.95rem;
 }
 
 * {
@@ -85,9 +143,23 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Inter', 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: #020617;
+}
+
+@keyframes switcherGlow {
+  0%, 100% { transform: rotate(25deg) translateX(0); opacity: 0.6; }
+  50% { transform: rotate(25deg) translateX(10%); opacity: 0.85; }
+}
+
+@media (max-width: 768px) {
+  .App-header h1 {
+    font-size: 2.75rem;
+  }
+
+  .App-main {
+    padding: 0 1.25rem;
+  }
 }

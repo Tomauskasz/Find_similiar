@@ -44,6 +44,16 @@ npm install
 npm start
 ```
 
+## Features
+
+- Visual similarity search with drag-and-drop upload
+- Catalog browser with pageable grid (up to 200 images per page), modal previews, uploads, and deletes
+- CLIP ViT-B/32 embeddings (OpenCLIP) + FAISS cosine similarity with configurable minimum confidence
+- Query-time augmentations (flip + crop) for robust matches
+- GPU acceleration (CUDA/DirectML/MPS) with automatic fallback to CPU
+- Modern React frontend with live status feedback
+- REST API with interactive docs (`/docs`)
+
 ## Catalog Data (PASS)
 Populate `data/catalog/` with public imagery:
 ```bash
@@ -56,11 +66,45 @@ Flags:
 
 On startup the backend checks whether `data/catalog_index.*` matches the current files; it rebuilds the FAISS cache automatically if files changed, were removed, or the embedding dimension differs.
 
+## Configuration
+All important knobs are centralized in `backend/config.py` (the `AppConfig` class). Key options:
+- Catalog/index paths (`catalog_dir`, `index_base_path`), batch size, and worker counts for FAISS rebuilds plus catalog pagination limits (`catalog_default_page_size`, `catalog_max_page_size`).
+- CLIP backbone selection (`feature_model_name`, `feature_model_pretrained`).
+- Query augmentations (`query_use_horizontal_flip`, `query_use_center_crop`, `query_crop_ratio`).
+- Search limits (`search_default_top_k`, `search_max_top_k`) and minimum similarity filtering (`search_min_similarity`).
+- Frontend pagination size for query results (`search_results_page_size`).
+- Allowed upload formats (`supported_image_formats`, defaulting to JPG/JPEG/JFIF/PNG/GIF/BMP/TIFF/WebP).
+
+You can override any value with environment variables prefixed by `VISUAL_SEARCH_`, or by placing the same entries inside a `.env` file in the repo root. Examples:
+
+```powershell
+set VISUAL_SEARCH_SEARCH_MAX_TOP_K=50
+set VISUAL_SEARCH_CATALOG_DIR=D:\datasets\catalog
+```
+
+```
+# .env
+VISUAL_SEARCH_FEATURE_MODEL_NAME=ViT-H-14
+VISUAL_SEARCH_INDEX_BUILD_WORKERS=8
+VISUAL_SEARCH_CATALOG_MAX_PAGE_SIZE=150
+```
+
 ## API & UI Endpoints
 - Frontend SPA: http://localhost:3000
 - REST API root: http://localhost:8000
 - Interactive docs: http://localhost:8000/docs
-- Key routes: `POST /search`, `POST /add-product`, `GET /catalog`, `GET /stats`
+- Key routes:
+  - `POST /search` – run similarity search (returns all matches ≥ configured confidence)
+  - `POST /add-product` – upload a new catalog image (used by the catalog browser)
+  - `GET /catalog/items` – paginated catalog listing (`page`, `page_size≤200`)
+  - `DELETE /catalog/{product_id}` – remove a catalog entry (index rebuilds automatically)
+  - `GET /catalog` – legacy full catalog dump (unchanged)
+  - `GET /stats` – frontend boot metadata (page sizes, supported formats, etc.)
+
+- **Catalog Browser**:
+  - Switch to the "Catalog Browser" tab in the UI to list every catalog entry.
+  - Adjust page size (up to 200), paginate through pages, preview in a modal, upload new assets, or delete unwanted items.
+  - Uploads are cached immediately; deletions trigger an automatic FAISS rebuild so search results stay consistent.
 
 ## GPU Acceleration
 `scripts/install_pytorch.py` prefers CUDA 11.8 wheels when `nvidia-smi` exists; otherwise it installs CPU wheels. At runtime `backend/gpu_utils.py` logs the detected accelerator (CUDA, MPS, or CPU). No TensorFlow/DirectML code remains.
@@ -68,7 +112,7 @@ On startup the backend checks whether `data/catalog_index.*` matches the current
 ## Troubleshooting
 - **Python version errors**: ensure `py -3.11` (Windows) or `python3.11` (Unix) is installed; PyTorch wheels are only available for 3.8–3.11.
 - **Missing frontend assets**: delete `frontend/node_modules` and rerun `npm install`.
-- **Image 404s / duplicates**: confirm referenced files exist under `data/catalog/` and restart the backend so the FAISS cache refreshes.
+- **Image 404s / duplicates**: confirm referenced files exist under `data/catalog/`. Use the catalog browser delete button to remove broken entries—the backend rebuilds FAISS automatically.
 - **PyTorch install failures**: rerun `python scripts/install_pytorch.py --force-cpu` inside `venv` or follow https://pytorch.org/get-started/locally/ for custom CUDA builds.
 
 ## Contributing

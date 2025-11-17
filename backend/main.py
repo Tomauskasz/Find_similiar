@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -7,33 +7,41 @@ import cv2
 from typing import List
 import os
 from pathlib import Path
+import math
 
 from .feature_extractor import FeatureExtractor
 from .similarity_search import SimilaritySearchEngine
-from .models import Product, SearchResult
+from .models import Product, SearchResult, CatalogPage
 from .gpu_utils import bannerize_gpu_status
+from .config import app_config
 
 
 def generate_query_variants(image: np.ndarray) -> List[np.ndarray]:
     variants = [image]
 
-    flipped = np.fliplr(image)
-    variants.append(flipped)
+    if app_config.query_use_horizontal_flip:
+        variants.append(np.fliplr(image))
 
-    crop_ratio = 0.9
-    h, w, _ = image.shape
-    ch = max(1, int(h * crop_ratio))
-    cw = max(1, int(w * crop_ratio))
-    top = max(0, (h - ch) // 2)
-    left = max(0, (w - cw) // 2)
-    cropped = image[top:top + ch, left:left + cw]
-    cropped = cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
-    variants.append(cropped)
+    if app_config.query_use_center_crop:
+        crop_ratio = app_config.query_crop_ratio
+        h, w, _ = image.shape
+        ch = max(1, int(h * crop_ratio))
+        cw = max(1, int(w * crop_ratio))
+        top = max(0, (h - ch) // 2)
+        left = max(0, (w - cw) // 2)
+        cropped = image[top:top + ch, left:left + cw]
+        cropped = cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
+        variants.append(cropped)
 
     return variants
 
-CATALOG_DIR = Path("data/catalog")
-INDEX_BASE_PATH = Path("data/catalog_index")
+CATALOG_DIR = app_config.catalog_dir
+INDEX_BASE_PATH = app_config.index_base_path
+SUPPORTED_FORMATS_MESSAGE = (
+    "Unsupported image format. Supported formats: "
+    + app_config.format_supported_extensions()
+    + "."
+)
 
 app = FastAPI(title="Visual Search API", version="1.0.0")
 app.mount("/data", StaticFiles(directory="data"), name="data")
@@ -52,51 +60,66 @@ _, gpu_banner = bannerize_gpu_status()
 print(gpu_banner)
 
 # Initialize services
-feature_extractor = FeatureExtractor()
+feature_extractor = FeatureExtractor(
+    model_name=app_config.feature_model_name,
+    pretrained=app_config.feature_model_pretrained,
+)
 search_engine = SimilaritySearchEngine()
+
+
+def _cache_index_to_disk():
+    if app_config.cache_index_on_startup and search_engine.get_catalog_size() > 0:
+        search_engine.save_index(str(INDEX_BASE_PATH))
+        print("Cached catalog index to disk.")
+
+
+def rebuild_index_from_disk():
+    """Rebuild the FAISS index from catalog images on disk."""
+    global search_engine
+    print("Building catalog index from images...")
+    search_engine = SimilaritySearchEngine(feature_dim=feature_extractor.feature_dim)
+    search_engine.build_index_from_directory(
+        str(CATALOG_DIR),
+        feature_extractor,
+        batch_size=app_config.index_build_batch_size,
+        max_workers=app_config.index_build_workers,
+    )
+    print(f"Loaded {search_engine.get_catalog_size()} products")
+    _cache_index_to_disk()
+
+
+def load_cached_index_if_valid() -> bool:
+    """Attempt to load cached FAISS index. Returns True if loaded successfully."""
+    index_base = INDEX_BASE_PATH
+    index_files_exist = index_base.with_suffix(".index").exists() and index_base.with_suffix(".pkl").exists()
+    if not index_files_exist:
+        return False
+    try:
+        print("Loading precomputed catalog index...")
+        search_engine.load_index(str(index_base))
+        missing = [
+            product for product in search_engine.products
+            if not Path(product.image_path).exists()
+        ]
+        if search_engine.index.d != feature_extractor.feature_dim:
+            print("Cached index dimension mismatch with current feature extractor.")
+            return False
+        if missing:
+            print(f"Detected {len(missing)} missing image files. Cached index invalid.")
+            return False
+        print(f"Loaded {search_engine.get_catalog_size()} products from cache")
+        return True
+    except Exception as exc:
+        print(f"Failed to load cached index: {exc}")
+        return False
 
 # Load catalog on startup
 @app.on_event("startup")
 async def startup_event():
     """Load existing catalog and build index"""
-    def rebuild_index():
-        global search_engine
-        print("Building catalog index from images...")
-        search_engine = SimilaritySearchEngine(feature_dim=feature_extractor.feature_dim)
-        search_engine.build_index_from_directory(str(CATALOG_DIR), feature_extractor)
-        print(f"Loaded {search_engine.get_catalog_size()} products")
-        if search_engine.get_catalog_size() > 0:
-            search_engine.save_index(str(INDEX_BASE_PATH))
-            print("Cached catalog index to disk.")
-
     CATALOG_DIR.mkdir(parents=True, exist_ok=True)
-    index_base = INDEX_BASE_PATH
-    index_files_exist = index_base.with_suffix(".index").exists() and index_base.with_suffix(".pkl").exists()
-
-    if index_files_exist:
-        try:
-            print("Loading precomputed catalog index...")
-            search_engine.load_index(str(index_base))
-            missing = [
-                product for product in search_engine.products
-                if not Path(product.image_path).exists()
-            ]
-            if search_engine.index.d != feature_extractor.feature_dim:
-                print("Cached index dimension mismatch with current feature extractor. Rebuilding index...")
-                rebuild_index()
-                return
-            if missing:
-                print(f"Detected {len(missing)} missing image files. Rebuilding index...")
-                rebuild_index()
-            else:
-                print(f"Loaded {search_engine.get_catalog_size()} products from cache")
-                return
-        except Exception as exc:
-            print(f"Failed to load cached index: {exc}. Rebuilding...")
-            rebuild_index()
-            return
-    else:
-        rebuild_index()
+    if not load_cached_index_if_valid():
+        rebuild_index_from_disk()
 
 @app.get("/")
 async def root():
@@ -105,23 +128,30 @@ async def root():
 @app.post("/search", response_model=List[SearchResult])
 async def search_similar(
     file: UploadFile = File(...),
-    top_k: int = 10
+    top_k: int = Form(app_config.search_default_top_k)
 ):
     """
     Upload an image and get visually similar products
     """
     try:
         # Validate file type
-        if not file.content_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="File must be an image")
+        content_type = file.content_type or ""
+        suffix = Path(file.filename or "").suffix.lower()
+        if suffix and suffix not in app_config.supported_image_formats:
+            raise HTTPException(status_code=415, detail=SUPPORTED_FORMATS_MESSAGE)
+
+        if not content_type.startswith("image/"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"File must be an image. Supported formats: {app_config.format_supported_extensions()}."
+            )
         
         # Read image with OpenCV
         contents = await file.read()
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        # Convert BGR to RGB
         if image is None:
-            raise HTTPException(status_code=400, detail="Unable to decode image. Please try another file.")
+            raise HTTPException(status_code=415, detail=SUPPORTED_FORMATS_MESSAGE)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
         variants = generate_query_variants(image)
@@ -131,11 +161,27 @@ async def search_similar(
         if norm > 0:
             query_features = query_features / norm
         
-        # Search for similar items
-        results = search_engine.search(query_features, top_k=top_k)
+        try:
+            requested_top_k = int(top_k)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Parameter 'top_k' must be an integer.")
+
+        if requested_top_k < 1:
+            raise HTTPException(status_code=400, detail="Parameter 'top_k' must be >= 1.")
+
+        limit = max(1, min(requested_top_k, app_config.search_max_top_k))
+        results = search_engine.search(query_features, top_k=limit)
+        if app_config.search_min_similarity > 0:
+            results = [
+                result
+                for result in results
+                if result.similarity_score >= app_config.search_min_similarity
+            ]
         
         return results
     
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -155,7 +201,6 @@ async def add_product(
         contents = await file.read()
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        # Convert BGR to RGB
         if image is None:
             raise HTTPException(status_code=400, detail="Unable to decode image. Please try another file.")
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -182,10 +227,38 @@ async def add_product(
         )
         
         search_engine.add_product(product, features)
-        search_engine.save_index(str(INDEX_BASE_PATH))
+        _cache_index_to_disk()
         
         return {"message": "Product added successfully", "product_id": product_id}
     
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/catalog/{product_id}")
+async def delete_catalog_item(product_id: str):
+    """
+    Delete a product from the catalog and rebuild the index.
+    """
+    try:
+        product = search_engine.get_product(product_id)
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found.")
+
+        image_path = Path(product.image_path)
+        if not image_path.is_absolute():
+            image_path = Path.cwd() / image_path
+        if image_path.exists():
+            image_path.unlink()
+        removed = search_engine.remove_product(product_id)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Product not found.")
+        _cache_index_to_disk()
+        return {"message": "Product deleted successfully", "product_id": product_id}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -196,6 +269,33 @@ async def get_catalog():
     """
     return search_engine.get_all_products()
 
+
+@app.get("/catalog/items", response_model=CatalogPage)
+async def get_catalog_items(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(app_config.catalog_default_page_size, ge=1),
+):
+    """
+    Paginated catalog browser
+    """
+    size = min(page_size, app_config.catalog_max_page_size)
+    total = search_engine.get_catalog_size()
+    if total == 0:
+        return CatalogPage(page=1, page_size=size, total_items=0, total_pages=0, items=[])
+
+    total_pages = max(1, math.ceil(total / size))
+    current_page = min(page, total_pages)
+    start = (current_page - 1) * size
+    end = start + size
+    items = search_engine.products[start:end]
+    return CatalogPage(
+        page=current_page,
+        page_size=size,
+        total_items=total,
+        total_pages=total_pages,
+        items=items,
+    )
+
 @app.get("/stats")
 async def get_stats():
     """
@@ -204,5 +304,11 @@ async def get_stats():
     return {
         "total_products": search_engine.get_catalog_size(),
         "model": feature_extractor.model_name,
-        "feature_dim": feature_extractor.feature_dim
+        "feature_dim": feature_extractor.feature_dim,
+        "search_max_top_k": app_config.search_max_top_k,
+        "search_min_similarity": app_config.search_min_similarity,
+        "results_page_size": app_config.search_results_page_size,
+        "supported_formats": list(app_config.supported_image_formats),
+        "catalog_default_page_size": app_config.catalog_default_page_size,
+        "catalog_max_page_size": app_config.catalog_max_page_size,
     }

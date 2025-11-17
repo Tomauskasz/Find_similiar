@@ -1,6 +1,6 @@
 import faiss
 import numpy as np
-from typing import List
+from typing import List, Dict, Optional
 import os
 import cv2
 import pickle
@@ -15,27 +15,52 @@ class SimilaritySearchEngine:
         Initialize FAISS index for similarity search
         """
         self.feature_dim = feature_dim
-        
-        # Use cosine similarity via inner product
-        self.index = faiss.IndexFlatIP(feature_dim)
-        
-        # Store product metadata
+        self._init_index()
         self.products: List[Product] = []
-        self.feature_vectors = []
-        
+        self.feature_vectors: Dict[str, np.ndarray] = {}
+        self.product_lookup: Dict[str, Product] = {}
+        self.product_id_to_index: Dict[str, int] = {}
+        self.product_id_to_faiss_id: Dict[str, int] = {}
+        self.faiss_id_to_product_id: Dict[int, str] = {}
+        self.next_faiss_id: int = 0
         print(f"Initialized FAISS index with dimension {feature_dim}")
-    
+
+    def _init_index(self):
+        # Use cosine similarity via inner product with ID mapping
+        self.index = faiss.IndexIDMap2(faiss.IndexFlatIP(self.feature_dim))
+
+    def reset(self):
+        """Reset index and metadata."""
+        self._init_index()
+        self.products = []
+        self.feature_vectors = {}
+        self.product_lookup = {}
+        self.product_id_to_index = {}
+        self.product_id_to_faiss_id = {}
+        self.faiss_id_to_product_id = {}
+        self.next_faiss_id = 0
+
+    def _register_product(self, product: Product, normalized_vector: np.ndarray, faiss_id: int):
+        if product.id in self.product_lookup:
+            self.remove_product(product.id)
+        self.products.append(product)
+        self.product_lookup[product.id] = product
+        self.product_id_to_index[product.id] = len(self.products) - 1
+        self.product_id_to_faiss_id[product.id] = faiss_id
+        self.faiss_id_to_product_id[faiss_id] = product.id
+        self.feature_vectors[product.id] = normalized_vector
+
     def add_product(self, product: Product, features: np.ndarray):
         """
         Add a product to the search index
         """
         normalized = self._normalize_vector(features)
         features_2d = normalized.reshape(1, -1).astype("float32")
-        self.index.add(features_2d)
-        
-        # Store metadata
-        self.products.append(product)
-        self.feature_vectors.append(normalized)
+        faiss_id = self.next_faiss_id
+        self.next_faiss_id += 1
+        ids = np.array([faiss_id], dtype='int64')
+        self.index.add_with_ids(features_2d, ids)
+        self._register_product(product, normalized, faiss_id)
     
     def search(
         self,
@@ -51,20 +76,26 @@ class SimilaritySearchEngine:
         # Ensure correct shape and type
         query_features = self._normalize_vector(query_features).reshape(1, -1).astype("float32")
         
-        scores, indices = self.index.search(query_features, min(top_k, self.index.ntotal))
+        scores, ids = self.index.search(query_features, min(top_k, self.index.ntotal))
         similarities = (np.clip(scores[0], -1.0, 1.0) + 1.0) / 2.0
         
         # Build results
         results = []
-        for idx, similarity in zip(indices[0], similarities):
-            if idx < len(self.products):
-                product = self.products[idx]
-                results.append(
-                    SearchResult(
-                        product=product,
-                        similarity_score=float(similarity)
-                    )
+        for faiss_id, similarity in zip(ids[0], similarities):
+            if faiss_id < 0:
+                continue
+            product_id = self.faiss_id_to_product_id.get(int(faiss_id))
+            if not product_id:
+                continue
+            product = self.product_lookup.get(product_id)
+            if not product:
+                continue
+            results.append(
+                SearchResult(
+                    product=product,
+                    similarity_score=float(similarity)
                 )
+            )
         
         return results
     
@@ -82,7 +113,9 @@ class SimilaritySearchEngine:
             print(f"Directory {directory} does not exist")
             return
         
-        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp'}
+        self.reset()
+        
+        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp'}
         filepaths = [
             os.path.join(directory, filename)
             for filename in os.listdir(directory)
@@ -154,30 +187,51 @@ class SimilaritySearchEngine:
         """
         Save FAISS index and metadata to disk
         """
-        # Save FAISS index
         faiss.write_index(self.index, f"{path}.index")
-        
-        # Save metadata
         with open(f"{path}.pkl", 'wb') as f:
-            pickle.dump({
-                'products': self.products,
-                'feature_vectors': self.feature_vectors
-            }, f)
+            pickle.dump(
+                {
+                    'products': self.products,
+                    'feature_vectors': self.feature_vectors,
+                    'product_id_to_faiss_id': self.product_id_to_faiss_id,
+                    'next_faiss_id': self.next_faiss_id,
+                    'feature_dim': self.feature_dim,
+                },
+                f,
+            )
     
     def load_index(self, path: str):
         """
         Load FAISS index and metadata from disk
         """
-        # Load FAISS index
         self.index = faiss.read_index(f"{path}.index")
-        
-        # Load metadata
         with open(f"{path}.pkl", 'rb') as f:
             data = pickle.load(f)
-            self.products = data['products']
-            self.feature_vectors = data['feature_vectors']
-            if self.feature_vectors:
-                self.feature_dim = len(self.feature_vectors[0])
+            self.products = data.get('products', [])
+            self.feature_vectors = data.get('feature_vectors', {})
+            self.product_lookup = {product.id: product for product in self.products}
+            self.product_id_to_index = {product.id: idx for idx, product in enumerate(self.products)}
+            self.product_id_to_faiss_id = data.get('product_id_to_faiss_id', {})
+            self.faiss_id_to_product_id = {faiss_id: pid for pid, faiss_id in self.product_id_to_faiss_id.items()}
+            self.next_faiss_id = data.get('next_faiss_id', len(self.products))
+            self.feature_dim = data.get('feature_dim', self.feature_dim)
+
+    def get_product(self, product_id: str) -> Optional[Product]:
+        return self.product_lookup.get(product_id)
+
+    def remove_product(self, product_id: str) -> Optional[Product]:
+        faiss_id = self.product_id_to_faiss_id.get(product_id)
+        if faiss_id is None:
+            return None
+        selector = faiss.IDSelectorArray(np.array([faiss_id], dtype='int64'))
+        self.index.remove_ids(selector)
+        removed_product = self.product_lookup.pop(product_id, None)
+        self.product_id_to_faiss_id.pop(product_id, None)
+        self.faiss_id_to_product_id.pop(faiss_id, None)
+        self.feature_vectors.pop(product_id, None)
+        self.products = [p for p in self.products if p.id != product_id]
+        self.product_id_to_index = {product.id: idx for idx, product in enumerate(self.products)}
+        return removed_product
 
     def _normalize_vector(self, vector: np.ndarray) -> np.ndarray:
         norm = np.linalg.norm(vector)

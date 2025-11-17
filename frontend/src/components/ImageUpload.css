@@ -1,54 +1,95 @@
 .upload-container {
-  max-width: 600px;
-  margin: 0 auto 3rem;
+  width: 100%;
 }
 
 .dropzone {
-  border: 3px dashed rgba(255, 255, 255, 0.5);
-  border-radius: 20px;
-  padding: 3rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 28px;
+  padding: 3.5rem 2.5rem;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.8));
+  box-shadow: 0 30px 80px rgba(2, 6, 23, 0.65);
+  position: relative;
+  overflow: hidden;
+}
+
+.dropzone::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 27px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  pointer-events: none;
 }
 
 .dropzone:hover,
 .dropzone.active {
-  border-color: white;
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.45);
+  transform: translateY(-3px);
+  box-shadow: 0 40px 80px rgba(2, 6, 23, 0.8);
 }
 
 .upload-icon {
-  font-size: 4rem;
-  margin-bottom: 1rem;
-  animation: float 3s ease-in-out infinite;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 1.5rem;
+  border-radius: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f8fafc;
+  background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+  box-shadow: 0 20px 45px rgba(99, 102, 241, 0.45);
+  position: relative;
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+.upload-icon--waiting {
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5f5;
+  box-shadow: none;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.upload-icon svg {
+  width: 48px;
+  height: 48px;
+}
+
+.upload-icon line,
+.upload-icon polyline {
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.upload-icon rect {
+  fill: currentColor;
+  opacity: 0.25;
 }
 
 .upload-prompt h3 {
-  font-size: 1.8rem;
+  font-size: 1.75rem;
   margin: 0 0 1rem;
   font-weight: 600;
 }
 
 .upload-prompt p {
-  font-size: 1.1rem;
-  margin: 0.5rem 0;
-  opacity: 0.9;
+  font-size: 1rem;
+  margin: 0.4rem 0;
+  opacity: 0.85;
 }
 
 .file-types {
   font-size: 0.9rem !important;
   opacity: 0.6 !important;
   margin-top: 1rem !important;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .preview {
@@ -57,9 +98,10 @@
 
 .preview img {
   max-width: 100%;
-  max-height: 400px;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  max-height: 420px;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(2, 6, 23, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .upload-hint {
@@ -70,11 +112,11 @@
 
 .error-message {
   margin-top: 1.5rem;
-  padding: 1rem;
-  background: rgba(255, 68, 68, 0.2);
-  border: 1px solid rgba(255, 68, 68, 0.5);
-  border-radius: 10px;
-  color: #ffcccc;
+  padding: 1rem 1.25rem;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 14px;
+  color: #fecdd3;
   font-size: 0.95rem;
 }
 

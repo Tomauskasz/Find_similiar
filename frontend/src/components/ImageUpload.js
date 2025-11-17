@@ -1,13 +1,29 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
 import './ImageUpload.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const FALLBACK_FORMATS = ['.jpg', '.jpeg', '.jfif', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp'];
 
-function ImageUpload({ onSearchComplete, setLoading, backendReady }) {
+const UploadGlyph = ({ variant = 'ready' }) => (
+  <div className={`upload-icon upload-icon--${variant}`} aria-hidden="true">
+    <svg viewBox="0 0 64 64" role="presentation" focusable="false">
+      <polyline points="22 30 32 20 42 30" />
+      <line x1="32" y1="20" x2="32" y2="46" />
+      <rect x="20" y="46" width="24" height="6" rx="3" />
+    </svg>
+  </div>
+);
+
+function ImageUpload({ onSearchComplete, setLoading, backendReady, maxResults, supportedFormats }) {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState(null);
+  const acceptedFormats = supportedFormats && supportedFormats.length > 0 ? supportedFormats : FALLBACK_FORMATS;
+  const formatDisplay = useMemo(
+    () => acceptedFormats.map((fmt) => fmt.replace('.', '').toUpperCase()).join(', '),
+    [acceptedFormats]
+  );
 
   const onDrop = useCallback(
     async (acceptedFiles) => {
@@ -29,7 +45,7 @@ function ImageUpload({ onSearchComplete, setLoading, backendReady }) {
       try {
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('top_k', '12');
+        formData.append('top_k', String(maxResults ?? 100));
 
         const response = await axios.post(`${API_URL}/search`, formData, {
           headers: {
@@ -39,19 +55,23 @@ function ImageUpload({ onSearchComplete, setLoading, backendReady }) {
 
         onSearchComplete(response.data, reader.result);
       } catch (err) {
-        setError(err.response?.data?.detail || 'Search failed. Please try again.');
+        if (err.response?.status === 415) {
+          setError(err.response?.data?.detail || `Unsupported file format. Supported formats: ${formatDisplay}.`);
+        } else {
+          setError(err.response?.data?.detail || 'Search failed. Please try again.');
+        }
         console.error('Search error:', err);
       } finally {
         setLoading(false);
       }
     },
-    [backendReady, onSearchComplete, setLoading]
+    [backendReady, onSearchComplete, setLoading, maxResults, formatDisplay]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.bmp'],
+      'image/*': acceptedFormats,
     },
     multiple: false,
   });
@@ -67,7 +87,7 @@ function ImageUpload({ onSearchComplete, setLoading, backendReady }) {
 
         {!backendReady ? (
           <div className="upload-prompt">
-            <div className="upload-icon" aria-hidden>[...]</div>
+            <UploadGlyph variant="waiting" />
             <h3>Backend warming up...</h3>
             <p>Please wait while the server finishes starting.</p>
           </div>
@@ -78,10 +98,10 @@ function ImageUpload({ onSearchComplete, setLoading, backendReady }) {
           </div>
         ) : (
           <div className="upload-prompt">
-            <div className="upload-icon" aria-hidden>[↑]</div>
+            <UploadGlyph />
             <h3>Upload Product Image</h3>
             <p>{isDragActive ? 'Drop image here...' : 'Drag & drop or click to select'}</p>
-            <p className="file-types">Supports: JPG, PNG, GIF, BMP</p>
+            <p className="file-types">Supports: {formatDisplay}</p>
           </div>
         )}
       </div>

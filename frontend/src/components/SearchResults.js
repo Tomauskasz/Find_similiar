@@ -19,16 +19,21 @@ function normalizeImagePath(product) {
   return `data/${normalized}`;
 }
 
-function SearchResults({ results, queryImage, visibleCount = results.length, onLoadMore }) {
-  const visibleResults = results.slice(0, visibleCount);
-  const canLoadMore = typeof onLoadMore === 'function' && visibleCount < results.length;
+function SearchResults({ results, queryImage, visibleCount = results.length, onLoadMore, minSimilarity }) {
+  const totalResults = results.length;
+  const displayCount = Math.min(visibleCount, totalResults);
+  const visibleResults = results.slice(0, displayCount);
+  const canLoadMore = typeof onLoadMore === 'function' && displayCount < totalResults;
 
   return (
     <div className="results-container">
       <div className="results-header">
         <h2>Similar Products Found</h2>
         <p className="results-count">
-          Showing {visibleResults.length} of {results.length} matches
+          Showing {displayCount} of {totalResults} matches
+          {typeof minSimilarity === 'number' && (
+            <span className="match-threshold"> ≥ {(minSimilarity * 100).toFixed(0)}% match</span>
+          )}
         </p>
       </div>
 
@@ -81,7 +86,7 @@ function SearchResults({ results, queryImage, visibleCount = results.length, onL
       {canLoadMore && (
         <div className="load-more">
           <button type="button" onClick={onLoadMore}>
-            Load more results
+            Show more results
           </button>
         </div>
       )}

@@ -2,7 +2,8 @@
 
 ## Structure
 - `backend/`: FastAPI app (`main.py`), CLIP feature extractor (`feature_extractor.py`), FAISS engine (`similarity_search.py`), Pydantic models (`models.py`), and GPU helpers (`gpu_utils.py`). Catalog images and FAISS cache live in `data/catalog/` and `data/catalog_index.*`.
-- `frontend/`: React 18 app with components under `src/components/` (e.g., `ImageUpload`, `SearchResults`).
+- `backend/config.py`: Central `AppConfig` (Pydantic `BaseSettings`) controlling directories, CLIP model, query augmentations, search limits, supported formats, and catalog pagination. Override via `VISUAL_SEARCH_*` environment variables or `.env`.
+- `frontend/`: React 18 app with components under `src/components/` (e.g., `ImageUpload`, `SearchResults`, `CatalogBrowser`).
 - `scripts/`: Utility entry points such as `download_pass_catalog.py`, `install_pytorch.py`, plus the top-level `run.bat` / `run.sh` automation.
 
 ## Build & Dev
@@ -10,6 +11,7 @@
 - Manual backend command: `uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000` (after `uv pip install -r requirements.txt` and running `python scripts/install_pytorch.py`).
 - Frontend: `cd frontend && npm install && npm start`. Build for prod with `npm run build`.
 - PyTorch variants: re-run `python scripts/install_pytorch.py` (`--force-cpu` optional) inside `venv` if you need to switch CUDA/CPU builds.
+- Catalog API highlights: `POST /search`, `POST /add-product`, `GET /catalog/items`, `DELETE /catalog/{id}`, `GET /stats`. Keep these stable for the React catalog browser.
 
 ## Coding Style
 - Python: 4-space indents, typing, descriptive snake_case. Keep FastAPI routers lean; heavy lifting belongs in helper modules/engines. Avoid mutable defaults (use `Field(default_factory=...)`).
