@@ -29,7 +29,7 @@ This document tracks the multi-pass refactor and cleanup effort for the Visual S
 | --- | --- | --- | --- |
 | 0 | **Planning & Inventory** | Catalog modules, identify high-risk areas, capture TODOs. | ✅ Complete |
 | 1 | **Backend Core** | `backend/main.py`, `similarity_search.py`, `feature_extractor.py`, configuration & GPU helpers. Remove dead code, enforce typing, share utilities, document API responses. | 🔄 In Progress |
-| 2 | **Backend Supporting Scripts** | `scripts/*.py`, run scripts, dependency management. Consolidate duplicated logic, ensure idempotence. | ⬜ Pending |
+| 2 | **Backend Supporting Scripts** | `scripts/*.py`, run scripts, dependency management. Consolidate duplicated logic, ensure idempotence. | 🔄 In Progress |
 | 3 | **Frontend State & Components** | `frontend/src/App.js`, components, hooks. Reduce prop drilling, memoize expensive computations, remove unused styles/assets. | ⬜ Pending |
 | 4 | **Styles & Assets** | CSS cleanup, normalize tokens, remove unused selectors/assets, enforce consistent naming. | ⬜ Pending |
 | 5 | **Documentation & Tooling** | Update README/AGENTS and add tests/tooling to match new structure. | ⬜ Pending |
@@ -103,6 +103,16 @@ Each pass will add an entry below summarizing the files touched, rationale, and 
 | 2025-11-17 | Phase 1 | Added shared FastAPI upload validation/decoding helpers, normalized query feature computation, and stricter parsing utilities. Both `/search` and `/add-product` now rely on the same vetted code paths. | Manual regression pending; add unit tests for helpers. |
 | 2025-11-17 | Phase 1 | Centralized catalog directory/id handling and image persistence helpers; removed duplicate logic from `/add-product` and ensured startup consistently prepares `data/catalog`. | Smoke test uploads + search when convenient. |
 | 2025-11-17 | Phase 1 | Refined `SimilaritySearchEngine.build_index_from_directory` to use `pathlib`, shared extension constants, and clearer batching/logging. Removed `os` dependency and simplified file handling. | Run catalog rebuild to verify behavior when possible. |
+| 2025-11-17 | Phase 1 | Unified GPU/device detection via `resolve_torch_device`, simplified `FeatureExtractor` initialization, and reused batch extraction logic to remove duplicated tensor handling. | Verify feature extraction on CPU & GPU paths if available. |
+| 2025-11-17 | Phase 1 | Introduced structured logging across backend core modules (FastAPI app, similarity engine, feature extractor) to replace ad-hoc prints, improving debuggability and consistency. | Ensure logging config exists in deployment; monitor logs during next run. |
+| 2025-11-17 | Phase 1 | Extracted catalog/index responsibilities into `CatalogService`, removing global state from `main.py`, consolidating cache rebuild logic, and routing all catalog operations through a single abstraction. | Validate add/delete/search endpoints and catalog pagination. |
+| 2025-11-17 | Phase 1 | Moved upload/query helpers into `backend/utils/upload_utils`, trimmed unused imports, and updated routes to rely on the shared service/util stack for cleaner FastAPI handlers. | Re-test `/search` & `/add-product`; ensure `/asset` still serves images. |
+| 2025-11-17 | Phase 3 | Added `useBackendStats` hook plus shared frontend image utilities, removing bespoke polling logic from `App.js` and centralizing path/blob helpers. | Verify frontend bootstraps correctly and TypeScript-style imports resolve. |
+| 2025-11-17 | Phase 2 | Created `scripts/utils` helpers, refactored `download_pass_catalog.py` to reuse shared I/O utilities, and introduced a dataclass-based PyTorch installer for more predictable CLI behavior. | Re-run scripts to confirm behavior; consider adding logging configuration. |
+| 2025-11-17 | Phase 3 | Introduced `useConfidence` hook and wired `SearchResults`/`CatalogBrowser` to shared image utilities, simplifying slider state management and eliminating duplicate normalization logic. | Smoke test slider + "Find matches" flow. |
+| 2025-11-17 | Phase 3 | Added `useCatalogView` hook, centralized Axios usage via `apiClient`, and ensured backend polling + slider logic leverage shared hooks/utilities. | Confirm view toggling and API interactions work end-to-end. |
+| 2025-11-17 | Phase 3 | Memoized search callbacks in `App.js`, renamed the shared HTTP client to avoid redeclarations, and switched `CatalogBrowser` to the shared Axios wrapper. Backend config restored after accidental removal. | Smoke-test search flow and ensure config is intact. |
+| 2025-11-17 | Phase 3 | Resolved frontend build error by renaming the memoized API client instance throughout `App.js` so Babel no longer reports duplicate identifiers. | Verify frontend compiles and runs without redeclaration errors. |
 
 ---
 

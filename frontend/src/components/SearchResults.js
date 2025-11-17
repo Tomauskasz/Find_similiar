@@ -1,23 +1,13 @@
 import React, { useState } from 'react';
 import './SearchResults.css';
+import { normalizeImagePath } from '../utils/image';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
-function normalizeImagePath(product) {
-  const path =
-    product.image_path && product.image_path.length > 0
-      ? product.image_path
-      : `data/catalog/${product.id}.jpg`;
-
-  const normalized = path.replace(/\\/g, '/');
-  if (normalized.startsWith('data/')) {
-    return normalized;
-  }
-  if (normalized.startsWith('/')) {
-    return `data${normalized}`;
-  }
-  return `data/${normalized}`;
-}
+const getProductImagePath = (product) => {
+  const fallback = `data/catalog/${product.id}.jpg`;
+  return normalizeImagePath(product.image_path && product.image_path.length > 0 ? product.image_path : fallback);
+};
 
 function SearchResults({
   results,
@@ -64,7 +54,7 @@ function SearchResults({
               onClick={() => setSelectedResult(result)}
             >
               <img
-                src={`${API_URL}/${normalizeImagePath(result.product)}`}
+                src={`${API_URL}/${getProductImagePath(result.product)}`}
                 alt={result.product.name}
                 onError={(e) => {
                   e.target.onerror = null;
@@ -118,7 +108,7 @@ function SearchResults({
               x
             </button>
             <img
-              src={`${API_URL}/${normalizeImagePath(selectedResult.product)}`}
+              src={`${API_URL}/${getProductImagePath(selectedResult.product)}`}
               alt={selectedResult.product.name}
             />
             <div className="modal-details">

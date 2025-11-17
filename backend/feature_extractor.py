@@ -1,10 +1,13 @@
+import logging
 import numpy as np
 import torch
 import open_clip
 from PIL import Image
 from contextlib import nullcontext
 
-from .gpu_utils import get_device_name
+from .gpu_utils import resolve_torch_device
+
+logger = logging.getLogger(__name__)
 
 
 class FeatureExtractor:
@@ -15,10 +18,7 @@ class FeatureExtractor:
         self.model_name = model_name
         self.pretrained = pretrained
 
-        if torch.cuda.is_available():
-            self.device = torch.device("cuda")
-        else:
-            self.device = torch.device("cpu")
+        self.device, device_name = resolve_torch_device()
 
         self.model, _, self.preprocess = open_clip.create_model_and_transforms(
             model_name,
@@ -29,8 +29,7 @@ class FeatureExtractor:
 
         self.feature_dim = self.model.visual.output_dim
 
-        device = get_device_name()
-        print(f"Loaded CLIP {model_name} ({pretrained}) for feature extraction on {device}")
+        logger.info("Loaded CLIP %s (%s) for feature extraction on %s", model_name, pretrained, device_name)
 
     def _prepare_tensor(self, img: np.ndarray) -> torch.Tensor:
         pil_img = Image.fromarray(img)
@@ -49,9 +48,7 @@ class FeatureExtractor:
         return embeddings.cpu().numpy()
 
     def extract_features(self, img: np.ndarray) -> np.ndarray:
-        tensor = self._prepare_tensor(img)
-        features = self._encode_batch(tensor)[0]
-        return features
+        return self.extract_features_batch([img])[0]
 
     def extract_features_batch(self, images: list[np.ndarray]) -> np.ndarray:
         tensors = [self._prepare_tensor(img) for img in images]

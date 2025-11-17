@@ -7,28 +7,11 @@ import argparse
 import random
 from pathlib import Path
 from typing import Iterable
-from urllib import request
-import ssl
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from .utils.io import download_binary, ensure_directory, fetch_text
+
 PASS_URL_LIST = "https://www.robots.ox.ac.uk/~vgg/research/pass/pass_urls.txt"
-
-
-def fetch_url_list(source: str, insecure: bool = False) -> list[str]:
-    if Path(source).exists():
-        text = Path(source).read_text(encoding="utf-8")
-    else:
-        context = None
-        if insecure:
-            context = ssl.create_default_context()
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-        with request.urlopen(source, timeout=60, context=context) as resp:
-            text = resp.read().decode("utf-8")
-    urls = [line.strip() for line in text.splitlines() if line.strip()]
-    if not urls:
-        raise RuntimeError("No URLs found in PASS list.")
-    return urls
 
 
 def iter_target_paths(out_dir: Path, prefix: str = "pass") -> Iterable[Path]:
@@ -44,16 +27,6 @@ def iter_target_paths(out_dir: Path, prefix: str = "pass") -> Iterable[Path]:
     while True:
         yield out_dir / f"{prefix}_{idx:06d}.jpg"
         idx += 1
-
-
-def download_image(url: str, dest: Path, timeout: int = 60) -> bool:
-    try:
-        with request.urlopen(url, timeout=timeout) as resp:
-            dest.write_bytes(resp.read())
-        return True
-    except Exception as exc:
-        print(f"[warn] failed to download {url}: {exc}")
-        return False
 
 
 def main() -> int:
@@ -92,9 +65,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    args.out.mkdir(parents=True, exist_ok=True)
+    ensure_directory(args.out)
 
-    urls = fetch_url_list(args.urls, insecure=args.insecure)
+    text = fetch_text(args.urls, insecure=args.insecure)
+    urls = [line.strip() for line in text.splitlines() if line.strip()]
+    if not urls:
+        raise RuntimeError("No URLs found in PASS list.")
     random.Random(args.seed).shuffle(urls)
     selected = urls[: args.count]
 
@@ -105,7 +81,7 @@ def main() -> int:
     successes = 0
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         future_to_url = {
-            executor.submit(download_image, url, dest): (url, dest)
+            executor.submit(download_binary, url, dest, timeout=60): (url, dest)
             for url, dest in zip(selected, targets)
         }
         for future in as_completed(future_to_url):

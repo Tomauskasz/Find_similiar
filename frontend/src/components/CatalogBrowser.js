@@ -1,21 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import axios from 'axios';
 import './CatalogBrowser.css';
+import { normalizeImagePath } from '../utils/image';
+import { createApiClient } from '../services/apiClient';
 
 const DEFAULT_PAGE_SIZE = 40;
 const DEFAULT_MAX_PAGE_SIZE = 200;
 const FALLBACK_FORMATS = ['.jpg', '.jpeg', '.jfif', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp'];
-
-const normalizeImagePath = (path = '') => {
-  const normalized = path.replace(/\\/g, '/');
-  if (normalized.startsWith('data/')) {
-    return normalized;
-  }
-  if (normalized.startsWith('/')) {
-    return `data${normalized}`;
-  }
-  return `data/${normalized}`;
-};
 
 const CatalogBrowser = ({
   backendReady,
@@ -42,6 +32,7 @@ const CatalogBrowser = ({
   const [pageInputError, setPageInputError] = useState('');
 
   const pageSizeDropdownRef = useRef(null);
+  const apiClient = useMemo(() => createApiClient(apiUrl), [apiUrl]);
 
   const effectiveMaxPageSize = maxPageSize || DEFAULT_MAX_PAGE_SIZE;
   const acceptedFormats = supportedFormats?.length ? supportedFormats : FALLBACK_FORMATS;
@@ -64,7 +55,7 @@ const CatalogBrowser = ({
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get(`${apiUrl}/catalog/items`, {
+      const response = await apiClient.get('/catalog/items', {
         params: { page, page_size: pageSize },
       });
       setItems(response.data.items || []);
@@ -76,7 +67,7 @@ const CatalogBrowser = ({
     } finally {
       setLoading(false);
     }
-  }, [apiUrl, backendReady, page, pageSize]);
+  }, [apiClient, backendReady, page, pageSize]);
 
   useEffect(() => {
     fetchCatalog();
@@ -153,7 +144,7 @@ const CatalogBrowser = ({
     const confirmed = window.confirm('Delete this catalog image? This action cannot be undone.');
     if (!confirmed) return;
     try {
-      await axios.delete(`${apiUrl}/catalog/${productId}`);
+      await apiClient.delete(`/catalog/${productId}`);
       setPage((currentPage) => {
         if (items.length === 1 && currentPage > 1) {
           return currentPage - 1;
@@ -174,7 +165,7 @@ const CatalogBrowser = ({
     try {
       const formData = new FormData();
       formData.append('file', file);
-      await axios.post(`${apiUrl}/add-product`, formData, {
+      await apiClient.post('/add-product', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       event.target.value = '';

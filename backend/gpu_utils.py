@@ -30,3 +30,14 @@ def bannerize_gpu_status():
 def get_device_name():
     has_gpu, info = detect_gpu()
     return info if has_gpu else "CPU"
+
+
+def resolve_torch_device():
+    """
+    Return the best torch.device available alongside a human-readable description.
+    """
+    if torch.cuda.is_available():
+        return torch.device("cuda"), torch.cuda.get_device_name(0)
+    if torch.backends.mps.is_available():
+        return torch.device("mps"), "Apple Metal Performance Shaders (MPS)"
+    return torch.device("cpu"), "CPU"

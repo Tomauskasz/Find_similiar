@@ -1,8 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import axios from 'axios';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ImageUpload from './components/ImageUpload';
 import SearchResults from './components/SearchResults';
 import CatalogBrowser from './components/CatalogBrowser';
+import useBackendStats from './hooks/useBackendStats';
+import useConfidence from './hooks/useConfidence';
+import useCatalogView from './hooks/useCatalogView';
+import { blobToDataUrl, normalizeImagePath } from './utils/image';
+import { createApiClient, searchSimilar } from './services/apiClient';
 import './App.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -12,45 +16,30 @@ const CONFIDENCE_MIN = 0.5;
 const CONFIDENCE_MAX = 0.99;
 const CONFIDENCE_STEP = 0.01;
 
-const normalizeImagePath = (path = '') => {
-  const normalized = path.replace(/\\/g, '/');
-  if (normalized.startsWith('data/')) {
-    return normalized;
-  }
-  if (normalized.startsWith('/')) {
-    return `data${normalized}`;
-  }
-  return `data/${normalized}`;
-};
-
-const blobToDataUrl = (blob) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Failed to load image preview.'));
-    reader.readAsDataURL(blob);
-  });
-
 function App() {
   const [rawResults, setRawResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploadedImage, setUploadedImage] = useState(null);
   const [visibleCount, setVisibleCount] = useState(0);
-  const [backendReady, setBackendReady] = useState(false);
-  const [backendAttempts, setBackendAttempts] = useState(0);
-  const [backendError, setBackendError] = useState(null);
-  const [backendStats, setBackendStats] = useState(null);
-  const [activeView, setActiveView] = useState('search');
-  const [confidence, setConfidence] = useState(0.8);
-  const [sliderValue, setSliderValue] = useState(0.8);
+  const memoizedClient = useMemo(() => createApiClient(API_URL), []);
+  const { backendReady, backendStats, backendAttempts, backendError } = useBackendStats(memoizedClient);
+  const [activeView, selectView] = useCatalogView('search');
+  const {
+    confidence,
+    sliderValue,
+    sliderPercent,
+    appliedConfidencePercent,
+    sliderDirty,
+    lastSearchConfidence,
+    handleSliderChange,
+    commitSlider,
+    markSearchConfidence,
+    syncBackendConfidence,
+  } = useConfidence(0.8);
   const confidenceInitialized = useRef(false);
   const [totalMatches, setTotalMatches] = useState(0);
-  const [lastSearchConfidence, setLastSearchConfidence] = useState(0.8);
   const lastQueryFileRef = useRef(null);
   const [sliderError, setSliderError] = useState(null);
-  const sliderPercent = Math.round(sliderValue * 100);
-  const appliedConfidencePercent = Math.round(confidence * 100);
-  const sliderDirty = Math.abs(sliderValue - confidence) > 0.0001;
 
   const resultsPageSize = backendStats?.results_page_size ?? DEFAULT_PAGE_SIZE;
   const maxResults = backendStats?.search_max_top_k ?? 100;
@@ -68,52 +57,16 @@ function App() {
       : filteredResults.length;
 
   useEffect(() => {
-    let cancelled = false;
-    let retryTimeout;
-
-    const checkBackend = async (attempt = 1) => {
-      if (cancelled) return;
-      setBackendAttempts(attempt);
-      setBackendError(null);
-      try {
-        const response = await axios.get(`${API_URL}/stats`, { timeout: 3000 });
-        if (!cancelled) {
-          setBackendReady(true);
-          setBackendStats(response.data);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        setBackendReady(false);
-        setBackendError(err.message ?? 'Backend unavailable');
-        const nextAttempt = attempt + 1;
-        const delay = Math.min(5000, 1000 * nextAttempt);
-        retryTimeout = setTimeout(() => checkBackend(nextAttempt), delay);
-      }
-    };
-
-    checkBackend(1);
-
-    return () => {
-      cancelled = true;
-      if (retryTimeout) {
-        clearTimeout(retryTimeout);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     const backendThreshold = backendStats?.search_min_similarity;
     if (
       typeof backendThreshold === 'number' &&
       !Number.isNaN(backendThreshold) &&
       !confidenceInitialized.current
     ) {
-      setConfidence(backendThreshold);
-      setSliderValue(backendThreshold);
-      setLastSearchConfidence(backendThreshold);
+      syncBackendConfidence(backendThreshold);
       confidenceInitialized.current = true;
     }
-  }, [backendStats?.search_min_similarity]);
+  }, [backendStats?.search_min_similarity, syncBackendConfidence]);
 
   useEffect(() => {
     setVisibleCount((current) => {
@@ -127,41 +80,35 @@ function App() {
     });
   }, [filteredResults.length, resultsPageSize]);
 
-  const handleSearchComplete = (
-    searchResults,
-    imageUrl,
-    totalMatchCount,
-    appliedConfidence
-  ) => {
-    const preview = imageUrl ?? uploadedImage;
-    const thresholdForCounts =
-      typeof appliedConfidence === 'number' && !Number.isNaN(appliedConfidence)
-        ? appliedConfidence
-        : confidence;
-    setRawResults(searchResults);
-    setUploadedImage(preview);
-    const matches = searchResults.filter(
-      (result) => result.similarity_score >= thresholdForCounts
-    ).length;
-    setVisibleCount(matches > 0 ? Math.min(resultsPageSize, matches) : 0);
-    setTotalMatches(
-      typeof totalMatchCount === 'number' && !Number.isNaN(totalMatchCount)
-        ? totalMatchCount
-        : searchResults.length
-    );
-    setLastSearchConfidence(
-      typeof appliedConfidence === 'number' && !Number.isNaN(appliedConfidence)
-        ? appliedConfidence
-        : confidence
-    );
-    setSliderError(null);
-  };
+  const handleSearchComplete = useCallback(
+    (searchResults, imageUrl, totalMatchCount, appliedConfidence) => {
+      const preview = imageUrl ?? uploadedImage;
+      const thresholdForCounts =
+        typeof appliedConfidence === 'number' && !Number.isNaN(appliedConfidence)
+          ? appliedConfidence
+          : confidence;
+      setRawResults(searchResults);
+      setUploadedImage(preview);
+      const matches = searchResults.filter(
+        (result) => result.similarity_score >= thresholdForCounts
+      ).length;
+      setVisibleCount(matches > 0 ? Math.min(resultsPageSize, matches) : 0);
+      setTotalMatches(
+        typeof totalMatchCount === 'number' && !Number.isNaN(totalMatchCount)
+          ? totalMatchCount
+          : searchResults.length
+      );
+      markSearchConfidence(thresholdForCounts);
+      setSliderError(null);
+    },
+    [uploadedImage, confidence, resultsPageSize, markSearchConfidence]
+  );
 
   const handleLoadMore = () => {
     setVisibleCount((count) => Math.min(count + resultsPageSize, filteredResults.length));
   };
 
-  const runSearchWithFile = async (file, previewDataUrl, thresholdOverride) => {
+  const runSearchWithFile = useCallback(async (file, previewDataUrl, thresholdOverride) => {
     if (!file) {
       throw new Error('Please upload an image before searching.');
     }
@@ -177,11 +124,7 @@ function App() {
       formData.append('file', file);
       formData.append('top_k', String(maxResults ?? 100));
       formData.append('min_similarity', String(threshold));
-      const response = await axios.post(`${API_URL}/search`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const response = await searchSimilar(memoizedClient, formData);
       const totalMatchesHeader = Number(response.headers['x-total-matches']);
       handleSearchComplete(response.data, previewDataUrl ?? uploadedImage, totalMatchesHeader, threshold);
       requestAnimationFrame(() => {
@@ -200,7 +143,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [memoizedClient, confidence, maxResults, uploadedImage, handleSearchComplete]);
 
   const fetchProductImageForSearch = async (product) => {
     if (!product?.image_path) {
@@ -226,7 +169,7 @@ function App() {
 
   const handleFindMatchesFromProduct = async (product) => {
     if (!product) return;
-    setActiveView('search');
+    selectView('search');
     try {
       const { file, dataUrl } = await fetchProductImageForSearch(product);
       await runSearchWithFile(file, dataUrl);
@@ -236,14 +179,13 @@ function App() {
     }
   };
 
-  const handleConfidenceChange = (event) => {
-    setSliderValue(parseFloat(event.target.value));
-  };
+  const handleConfidenceChange = handleSliderChange;
 
   const commitConfidence = () => {
+    const previous = confidence;
+    commitSlider();
     const nextValue = sliderValue;
-    setConfidence((prev) => (Math.abs(prev - nextValue) < 0.0001 ? prev : nextValue));
-    if (Math.abs(confidence - nextValue) <= 0.0001) {
+    if (Math.abs(previous - nextValue) <= 0.0001) {
       return;
     }
     if (!lastQueryFileRef.current || !uploadedImage) {
@@ -274,14 +216,14 @@ function App() {
           <button
             type="button"
             className={activeView === 'search' ? 'active' : ''}
-            onClick={() => setActiveView('search')}
+            onClick={() => selectView('search')}
           >
             Visual Search
           </button>
           <button
             type="button"
             className={activeView === 'catalog' ? 'active' : ''}
-            onClick={() => setActiveView('catalog')}
+            onClick={() => selectView('catalog')}
           >
             Catalog Browser
           </button>
@@ -396,5 +338,4 @@ function App() {
     </div>
   );
 }
-
 export default App;

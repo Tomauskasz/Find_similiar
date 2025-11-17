@@ -8,6 +8,7 @@ import importlib
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 
 CUDA_INDEX = "https://download.pytorch.org/whl/cu118"
 CPU_INDEX = "https://download.pytorch.org/whl/cpu"
@@ -35,22 +36,30 @@ def has_system_cuda() -> bool:
     return shutil.which("nvidia-smi") is not None
 
 
-def install_cuda() -> None:
-    print("Installing PyTorch (CUDA 11.8) build...")
-    run_pip(
-        [
-            f"--index-url={CUDA_INDEX}",
-            f"torch=={TORCH_VERSION}",
-            f"torchvision=={TORCHVISION_VERSION}",
-        ]
-    )
+@dataclass
+class InstallerConfig:
+    desired_cuda: bool
+    current_version: str | None
+    has_cuda: bool
 
 
-def install_cpu() -> None:
-    print("Installing PyTorch CPU build...")
+def needs_install(config: InstallerConfig) -> bool:
+    if config.current_version is None:
+        return True
+    if config.desired_cuda and not config.has_cuda:
+        return True
+    if not config.desired_cuda and config.current_version and "cpu" not in config.current_version:
+        return True
+    return False
+
+
+def install_torch(*, use_cuda: bool) -> None:
+    index = CUDA_INDEX if use_cuda else CPU_INDEX
+    flavor = "CUDA 11.8" if use_cuda else "CPU"
+    print(f"Installing PyTorch ({flavor}) build...")
     run_pip(
         [
-            f"--index-url={CPU_INDEX}",
+            f"--index-url={index}",
             f"torch=={TORCH_VERSION}",
             f"torchvision=={TORCHVISION_VERSION}",
         ]
@@ -73,35 +82,26 @@ def main() -> int:
 
     desired_cuda = False if args.force_cpu else has_system_cuda()
     version, has_cuda = current_variant()
+    config = InstallerConfig(desired_cuda=desired_cuda, current_version=version, has_cuda=has_cuda)
 
-    needs_install = version is None
-    if version:
-        if desired_cuda and not has_cuda:
-            needs_install = True
-        if not desired_cuda and version and "cpu" not in version:
-            needs_install = True
-
-    if not needs_install:
+    if not needs_install(config):
         print(f"Existing PyTorch install ({version}) satisfies requirements.")
         install_openclip()
         return 0
 
     try:
-        if desired_cuda:
-            install_cuda()
-        else:
-            install_cpu()
+        install_torch(use_cuda=config.desired_cuda)
     except subprocess.CalledProcessError as exc:
-        if desired_cuda:
+        if config.desired_cuda:
             print("CUDA installation failed, falling back to CPU build.")
-            install_cpu()
+            install_torch(use_cuda=False)
         else:
             raise SystemExit(exc.returncode or 1)
 
     install_openclip()
 
     _, has_cuda_after = current_variant()
-    if desired_cuda and not has_cuda_after:
+    if config.desired_cuda and not has_cuda_after:
         print("Warning: PyTorch could not access CUDA; running in CPU mode.")
     else:
         print("PyTorch installation complete.")

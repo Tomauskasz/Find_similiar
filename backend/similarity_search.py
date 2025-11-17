@@ -1,3 +1,4 @@
+import logging
 import faiss
 import numpy as np
 from typing import List, Dict, Optional
@@ -9,6 +10,7 @@ from pathlib import Path
 from .models import Product, SearchResult
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".tif", ".webp"}
+logger = logging.getLogger(__name__)
 
 class SimilaritySearchEngine:
     def __init__(self, feature_dim: int = 512):
@@ -24,7 +26,7 @@ class SimilaritySearchEngine:
         self.product_id_to_faiss_id: Dict[str, int] = {}
         self.faiss_id_to_product_id: Dict[int, str] = {}
         self.next_faiss_id: int = 0
-        print(f"Initialized FAISS index with dimension {feature_dim}")
+        logger.info("Initialized FAISS index with dimension %s", feature_dim)
 
     def _init_index(self):
         # Use cosine similarity via inner product with ID mapping
@@ -112,12 +114,12 @@ class SimilaritySearchEngine:
         """
         root = Path(directory)
         if not root.exists():
-            print(f"Directory {root} does not exist")
+            logger.warning("Directory %s does not exist", root)
             return
 
         image_paths = [path for path in root.iterdir() if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS]
         if not image_paths:
-            print(f"No images found in {root}")
+            logger.warning("No images found in %s", root)
             self.reset()
             return
 
@@ -148,7 +150,7 @@ class SimilaritySearchEngine:
                     batch_products.append(product)
                     batch_images.append(img)
                 except Exception as exc:
-                    print(f"Error processing {path}: {exc}")
+                    logger.warning("Error processing %s: %s", path, exc)
                     continue
 
                 if len(batch_images) >= batch_size:
@@ -166,7 +168,7 @@ class SimilaritySearchEngine:
             for product, features in zip(products, features_batch):
                 self.add_product(product, features)
         except Exception as exc:
-            print(f"Error extracting batch features: {exc}")
+            logger.warning("Error extracting batch features: %s", exc)
     
     def get_all_products(self) -> List[Product]:
         """

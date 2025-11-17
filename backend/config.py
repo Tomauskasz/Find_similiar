@@ -6,11 +6,7 @@ from pydantic_settings import BaseSettings
 
 
 class AppConfig(BaseSettings):
-    """Central configuration for the Visual Search system.
-
-    Values can be overridden via environment variables prefixed with ``VISUAL_SEARCH_``
-    or by defining them inside a local ``.env`` file (see README for details).
-    """
+    """Central configuration for the Visual Search system."""
 
     # Catalog / index settings
     catalog_dir: Path = Field(default=Path("data/catalog"), description="Directory holding catalog imagery.")
