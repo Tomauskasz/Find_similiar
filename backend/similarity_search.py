@@ -238,3 +238,19 @@ class SimilaritySearchEngine:
         if norm == 0:
             return vector.astype("float32")
         return (vector / norm).astype("float32")
+
+    def count_matches(self, query_features: np.ndarray, threshold: float) -> int:
+        """
+        Count how many catalog items meet or exceed the provided cosine similarity threshold.
+        """
+        if not self.feature_vectors:
+            return 0
+        # Threshold provided by clients uses the 0..1 scale (after mapping cosine scores from [-1, 1]).
+        # Convert back to raw cosine values for comparison with stored normalized vectors.
+        cosine_threshold = (threshold * 2.0) - 1.0
+        if cosine_threshold <= -1.0:
+            return len(self.feature_vectors)
+        normalized_query = self._normalize_vector(query_features)
+        feature_matrix = np.stack(list(self.feature_vectors.values()))
+        similarities = feature_matrix @ normalized_query.astype("float32")
+        return int(np.sum(similarities >= cosine_threshold))

@@ -17,7 +17,14 @@ const normalizeImagePath = (path = '') => {
   return `data/${normalized}`;
 };
 
-const CatalogBrowser = ({ backendReady, apiUrl, defaultPageSize, maxPageSize, supportedFormats }) => {
+const CatalogBrowser = ({
+  backendReady,
+  apiUrl,
+  defaultPageSize,
+  maxPageSize,
+  supportedFormats,
+  onFindMatches,
+}) => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize || DEFAULT_PAGE_SIZE);
   const [items, setItems] = useState([]);
@@ -323,7 +330,23 @@ const CatalogBrowser = ({ backendReady, apiUrl, defaultPageSize, maxPageSize, su
             <img src={`${apiUrl}/${normalizeImagePath(selectedItem.image_path)}`} alt={selectedItem.name} />
             <div className="modal-details">
               <h3>{selectedItem.name}</h3>
-              <p>ID: {selectedItem.id}</p>
+              {selectedItem.category && (
+                <p className="modal-meta">
+                  <span>{selectedItem.category}</span>
+                </p>
+              )}
+              {typeof onFindMatches === 'function' && (
+                <button
+                  type="button"
+                  className="find-matches-button"
+                  onClick={() => {
+                    onFindMatches(selectedItem);
+                    setSelectedItem(null);
+                  }}
+                >
+                  Find matches
+                </button>
+              )}
             </div>
           </div>
         </div>

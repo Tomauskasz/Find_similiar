@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './SearchResults.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -19,8 +19,19 @@ function normalizeImagePath(product) {
   return `data/${normalized}`;
 }
 
-function SearchResults({ results, queryImage, visibleCount = results.length, onLoadMore, minSimilarity }) {
+function SearchResults({
+  results,
+  queryImage,
+  visibleCount = results.length,
+  onLoadMore,
+  minSimilarity,
+  totalMatches,
+  onFindMatches,
+}) {
+  const [selectedResult, setSelectedResult] = useState(null);
   const totalResults = results.length;
+  const totalLabelCount =
+    typeof totalMatches === 'number' && !Number.isNaN(totalMatches) ? totalMatches : totalResults;
   const displayCount = Math.min(visibleCount, totalResults);
   const visibleResults = results.slice(0, displayCount);
   const canLoadMore = typeof onLoadMore === 'function' && displayCount < totalResults;
@@ -30,9 +41,9 @@ function SearchResults({ results, queryImage, visibleCount = results.length, onL
       <div className="results-header">
         <h2>Similar Products Found</h2>
         <p className="results-count">
-          Showing {displayCount} of {totalResults} matches
+          Showing {displayCount} of {totalLabelCount} matches
           {typeof minSimilarity === 'number' && (
-            <span className="match-threshold"> ≥ {(minSimilarity * 100).toFixed(0)}% match</span>
+            <span className="match-threshold">>= {(minSimilarity * 100).toFixed(0)}% match</span>
           )}
         </p>
       </div>
@@ -47,7 +58,11 @@ function SearchResults({ results, queryImage, visibleCount = results.length, onL
           <div key={result.product.id} className="result-card">
             <div className="rank-badge">{index + 1}</div>
 
-            <div className="image-container">
+            <button
+              type="button"
+              className="image-container result-card__thumb"
+              onClick={() => setSelectedResult(result)}
+            >
               <img
                 src={`${API_URL}/${normalizeImagePath(result.product)}`}
                 alt={result.product.name}
@@ -56,7 +71,7 @@ function SearchResults({ results, queryImage, visibleCount = results.length, onL
                   e.target.src = queryImage;
                 }}
               />
-            </div>
+            </button>
 
             <div className="card-content">
               <h3 className="product-name">{result.product.name}</h3>
@@ -90,8 +105,53 @@ function SearchResults({ results, queryImage, visibleCount = results.length, onL
           </button>
         </div>
       )}
+
+      {selectedResult && (
+        <div className="catalog-modal" onClick={() => setSelectedResult(null)} role="presentation">
+          <div className="catalog-modal__content" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="close-modal"
+              onClick={() => setSelectedResult(null)}
+              aria-label="Close"
+            >
+              x
+            </button>
+            <img
+              src={`${API_URL}/${normalizeImagePath(selectedResult.product)}`}
+              alt={selectedResult.product.name}
+            />
+            <div className="modal-details">
+              <h3>{selectedResult.product.name}</h3>
+              <p>
+                Similarity: {(selectedResult.similarity_score * 100).toFixed(1)}%
+                {selectedResult.product.category && (
+                  <>
+                    {' '}
+                    · <span>{selectedResult.product.category}</span>
+                  </>
+                )}
+              </p>
+              {typeof onFindMatches === 'function' && (
+                <button
+                  type="button"
+                  className="find-matches-button"
+                  onClick={() => {
+                    onFindMatches(selectedResult.product);
+                    setSelectedResult(null);
+                  }}
+                >
+                  Find matches
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default SearchResults;
+
+

@@ -1,6 +1,6 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import numpy as np
 import cv2
@@ -44,7 +44,8 @@ SUPPORTED_FORMATS_MESSAGE = (
 )
 
 app = FastAPI(title="Visual Search API", version="1.0.0")
-app.mount("/data", StaticFiles(directory="data"), name="data")
+static_files_app = StaticFiles(directory="data")
+app.mount("/data", static_files_app, name="data")
 
 # CORS middleware
 app.add_middleware(
@@ -53,7 +54,29 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Total-Matches"],
 )
+
+
+def _add_cors_headers(response: Response) -> Response:
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET,OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
+
+@app.get("/asset/{requested_path:path}")
+async def get_asset(requested_path: str):
+    """Serve catalog assets with permissive CORS headers."""
+    data_root = Path("data").resolve()
+    sanitized = requested_path.lstrip("/").replace("..", "")
+    candidate = (data_root / sanitized).resolve()
+    if data_root not in candidate.parents and candidate != data_root:
+        raise HTTPException(status_code=404, detail="Asset not found.")
+    if not candidate.is_file():
+        raise HTTPException(status_code=404, detail="Asset not found.")
+    response = FileResponse(candidate)
+    return _add_cors_headers(response)
 
 # Configure GPU
 _, gpu_banner = bannerize_gpu_status()
@@ -128,7 +151,8 @@ async def root():
 @app.post("/search", response_model=List[SearchResult])
 async def search_similar(
     file: UploadFile = File(...),
-    top_k: int = Form(app_config.search_default_top_k)
+    top_k: int = Form(app_config.search_default_top_k),
+    min_similarity: float = Form(app_config.search_min_similarity),
 ):
     """
     Upload an image and get visually similar products
@@ -169,16 +193,27 @@ async def search_similar(
         if requested_top_k < 1:
             raise HTTPException(status_code=400, detail="Parameter 'top_k' must be >= 1.")
 
+        try:
+            similarity_threshold = float(min_similarity)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Parameter 'min_similarity' must be a float between 0 and 1.")
+
+        if not 0 <= similarity_threshold <= 1:
+            raise HTTPException(status_code=400, detail="Parameter 'min_similarity' must be between 0 and 1.")
+
         limit = max(1, min(requested_top_k, app_config.search_max_top_k))
         results = search_engine.search(query_features, top_k=limit)
-        if app_config.search_min_similarity > 0:
+        if similarity_threshold > 0:
             results = [
                 result
                 for result in results
-                if result.similarity_score >= app_config.search_min_similarity
+                if result.similarity_score >= similarity_threshold
             ]
-        
-        return results
+
+        total_matches = search_engine.count_matches(query_features, similarity_threshold)
+        payload = [result.model_dump() for result in results]
+        headers = {"X-Total-Matches": str(total_matches)}
+        return JSONResponse(content=payload, headers=headers)
     
     except HTTPException:
         raise

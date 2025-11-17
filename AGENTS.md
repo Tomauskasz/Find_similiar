@@ -17,6 +17,38 @@
 - Python: 4-space indents, typing, descriptive snake_case. Keep FastAPI routers lean; heavy lifting belongs in helper modules/engines. Avoid mutable defaults (use `Field(default_factory=...)`).
 - JavaScript/React: PascalCase components, kebab-case CSS classes, hooks with complete dependency arrays, async/await for Axios calls, API base URL from `frontend/.env` (`REACT_APP_API_URL`).
 
+## Comprehensive Coding Guidelines (Priority)
+1. **Naming & Constants**
+   - Use meaningful names that communicate purpose; avoid ambiguous abbreviations.
+   - Replace magic numbers with descriptive named constants near the top of each file.
+   - Keep naming conventions consistent across files, folders, and variables.
+2. **Function Design**
+   - Enforce single-responsibility; functions should stay small and focused.
+   - Favor self-documenting code. If you need comments to describe a block, consider refactoring.
+   - Provide clear interfaces and hide implementation details.
+   - Extract complex or nested logic into well-named helper functions.
+3. **Performance & Efficiency**
+   - Choose algorithms and data structures that avoid unnecessary O(n²) or worse complexity.
+   - Be mindful of memory usage, avoid excess allocations, and clean up resources appropriately.
+   - Optimize I/O: avoid blocking calls, batch remote requests when possible, and handle async flows correctly.
+   - Keep loops lean, trim redundant calculations, and use efficient string operations.
+   - When using concurrency, guard against race conditions with proper synchronization.
+4. **Code Organization & Structure**
+   - DRY: consolidate repeated logic into reusable helpers or shared modules.
+   - Maintain a clear hierarchy so related code lives together, with proper abstractions and encapsulation.
+5. **Documentation & Comments**
+   - Write comments that explain **why** decisions were made, not what the code does.
+   - Document APIs, complex algorithms, business rules, and non-obvious side effects.
+6. **Quality Assurance**
+   - Refactor continuously and leave code cleaner than you found it.
+   - Add or update tests when fixing bugs or adding features; cover edge cases and failure paths.
+   - Keep tests readable, deterministic, and suitable for CI.
+7. **Version Control**
+   - Make small, focused commits with descriptive messages that explain the _why_.
+   - Use branch names that communicate the task or feature clearly.
+8. **Maintenance Mindset**
+   - Tackle technical debt proactively, watch resource usage, and plan for scalability and larger data volumes.
+
 ## Testing
 - No automated tests exist yet—add Pytest suites under `backend/tests/` for new backend functionality (use PASS samples or fixtures). Use React Testing Library / Jest alongside frontend components (`*.test.jsx`) or under `frontend/src/__tests__/`. Disable watch mode in CI (`npm test -- --watch=false`).
 

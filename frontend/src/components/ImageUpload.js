@@ -1,9 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import axios from 'axios';
 import './ImageUpload.css';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 const FALLBACK_FORMATS = ['.jpg', '.jpeg', '.jfif', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp'];
 
 const UploadGlyph = ({ variant = 'ready' }) => (
@@ -16,7 +14,12 @@ const UploadGlyph = ({ variant = 'ready' }) => (
   </div>
 );
 
-function ImageUpload({ onSearchComplete, setLoading, backendReady, maxResults, supportedFormats }) {
+function ImageUpload({
+  backendReady,
+  loading,
+  supportedFormats,
+  onRunSearch,
+}) {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState(null);
   const acceptedFormats = supportedFormats && supportedFormats.length > 0 ? supportedFormats : FALLBACK_FORMATS;
@@ -36,36 +39,22 @@ function ImageUpload({ onSearchComplete, setLoading, backendReady, maxResults, s
       if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = () => setPreview(reader.result);
-      reader.readAsDataURL(file);
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('top_k', String(maxResults ?? 100));
-
-        const response = await axios.post(`${API_URL}/search`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
-
-        onSearchComplete(response.data, reader.result);
-      } catch (err) {
-        if (err.response?.status === 415) {
-          setError(err.response?.data?.detail || `Unsupported file format. Supported formats: ${formatDisplay}.`);
-        } else {
-          setError(err.response?.data?.detail || 'Search failed. Please try again.');
+      reader.onload = async () => {
+        const dataUrl = reader.result;
+        setPreview(dataUrl);
+        setError(null);
+        try {
+          await onRunSearch(file, dataUrl);
+        } catch (err) {
+          setError(err.message || 'Search failed. Please try again.');
         }
-        console.error('Search error:', err);
-      } finally {
-        setLoading(false);
-      }
+      };
+      reader.onerror = () => {
+        setError('Unable to read the selected file. Please try another image.');
+      };
+      reader.readAsDataURL(file);
     },
-    [backendReady, onSearchComplete, setLoading, maxResults, formatDisplay]
+    [backendReady, onRunSearch]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -81,7 +70,10 @@ function ImageUpload({ onSearchComplete, setLoading, backendReady, maxResults, s
       <div
         {...getRootProps()}
         className={`dropzone ${isDragActive ? 'active' : ''}`}
-        style={{ pointerEvents: backendReady ? 'auto' : 'none', opacity: backendReady ? 1 : 0.6 }}
+        style={{
+          pointerEvents: backendReady && !loading ? 'auto' : 'none',
+          opacity: backendReady ? 1 : 0.6,
+        }}
       >
         <input {...getInputProps()} />
 
