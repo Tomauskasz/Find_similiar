@@ -1,9 +1,11 @@
 import logging
-import numpy as np
-import torch
-import open_clip
-from PIL import Image
 from contextlib import nullcontext
+from typing import Sequence
+
+import numpy as np
+import open_clip
+import torch
+from PIL import Image
 
 from .gpu_utils import resolve_torch_device
 
@@ -50,7 +52,9 @@ class FeatureExtractor:
     def extract_features(self, img: np.ndarray) -> np.ndarray:
         return self.extract_features_batch([img])[0]
 
-    def extract_features_batch(self, images: list[np.ndarray]) -> np.ndarray:
+    def extract_features_batch(self, images: Sequence[np.ndarray]) -> np.ndarray:
+        if not images:
+            raise ValueError("At least one image is required for feature extraction.")
         tensors = [self._prepare_tensor(img) for img in images]
         batch = torch.cat(tensors, dim=0)
         return self._encode_batch(batch)

@@ -8,7 +8,7 @@ import numpy as np
 
 from ..config import AppConfig
 from ..feature_extractor import FeatureExtractor
-from ..models import Product, CatalogPage
+from ..models import CatalogPage, CatalogStats, Product
 from ..similarity_search import SimilaritySearchEngine
 
 logger = logging.getLogger(__name__)
@@ -154,18 +154,18 @@ class CatalogService:
             items=items,
         )
 
-    def get_stats(self) -> dict:
-        return {
-            "total_products": self.search_engine.get_catalog_size(),
-            "model": self.feature_extractor.model_name,
-            "feature_dim": self.feature_extractor.feature_dim,
-            "search_max_top_k": self.config.search_max_top_k,
-            "search_min_similarity": self.config.search_min_similarity,
-            "results_page_size": self.config.search_results_page_size,
-            "supported_formats": list(self.config.supported_image_formats),
-            "catalog_default_page_size": self.config.catalog_default_page_size,
-            "catalog_max_page_size": self.config.catalog_max_page_size,
-        }
+    def get_stats(self) -> CatalogStats:
+        return CatalogStats(
+            total_products=self.search_engine.get_catalog_size(),
+            model=self.feature_extractor.model_name,
+            feature_dim=self.feature_extractor.feature_dim,
+            search_max_top_k=self.config.search_max_top_k,
+            search_min_similarity=self.config.search_min_similarity,
+            results_page_size=self.config.search_results_page_size,
+            supported_formats=list(self.config.supported_image_formats),
+            catalog_default_page_size=self.config.catalog_default_page_size,
+            catalog_max_page_size=self.config.catalog_max_page_size,
+        )
 
     # ------------------------------------------------------------------ #
     # Internal helpers

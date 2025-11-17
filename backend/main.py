@@ -1,5 +1,5 @@
 import logging
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query, Response
+from fastapi import FastAPI, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -7,7 +7,14 @@ from pathlib import Path
 from typing import List
 
 from .feature_extractor import FeatureExtractor
-from .models import Product, SearchResult, CatalogPage
+from .models import (
+    AddProductResponse,
+    CatalogPage,
+    CatalogStats,
+    DeleteProductResponse,
+    Product,
+    SearchResult,
+)
 from .gpu_utils import bannerize_gpu_status
 from .config import app_config
 from .services.catalog_service import CatalogService
@@ -24,6 +31,23 @@ from .utils.upload_utils import (
 logger = logging.getLogger(__name__)
 
 SUPPORTED_FORMATS_MESSAGE = build_supported_formats_message(app_config)
+TOTAL_MATCHES_HEADER = "X-Total-Matches"
+
+SEARCH_SUCCESS_RESPONSE = {
+    200: {
+        "description": (
+            "List of catalog entries sorted by cosine similarity. "
+            "The X-Total-Matches response header reports how many products meet or exceed the "
+            "requested similarity threshold."
+        ),
+        "headers": {
+            TOTAL_MATCHES_HEADER: {
+                "description": "Total number of matches in the catalog at the provided similarity threshold.",
+                "schema": {"type": "integer"},
+            }
+        },
+    }
+}
 
 app = FastAPI(title="Visual Search API", version="1.0.0")
 static_files_app = StaticFiles(directory="data")
@@ -82,7 +106,7 @@ async def startup_event():
 async def root():
     return {"message": "Visual Search API", "status": "running"}
 
-@app.post("/search", response_model=List[SearchResult])
+@app.post("/search", response_model=List[SearchResult], responses=SEARCH_SUCCESS_RESPONSE)
 async def search_similar(
     file: UploadFile = File(...),
     top_k: int = Form(app_config.search_default_top_k),
@@ -101,7 +125,7 @@ async def search_similar(
 
         results, total_matches = catalog_service.search(query_features, similarity_threshold, requested_top_k)
         payload = [result.model_dump() for result in results]
-        headers = {"X-Total-Matches": str(total_matches)}
+        headers = {TOTAL_MATCHES_HEADER: str(total_matches)}
         return JSONResponse(content=payload, headers=headers)
     
     except HTTPException:
@@ -109,13 +133,14 @@ async def search_similar(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/add-product")
+
+@app.post("/add-product", response_model=AddProductResponse)
 async def add_product(
     file: UploadFile = File(...),
-    product_id: str = None,
-    name: str = None,
-    category: str = None,
-    price: float = None
+    product_id: str | None = Form(None),
+    name: str | None = Form(None),
+    category: str | None = Form(None),
+    price: float | None = Form(None)
 ):
     """
     Add a new product to the catalog
@@ -131,7 +156,7 @@ async def add_product(
             category=category,
             price=price,
         )
-        return {"message": "Product added successfully", "product_id": product.id}
+        return AddProductResponse(message="Product added successfully", product_id=product.id)
     
     except HTTPException:
         raise
@@ -139,14 +164,14 @@ async def add_product(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/catalog/{product_id}")
+@app.delete("/catalog/{product_id}", response_model=DeleteProductResponse)
 async def delete_catalog_item(product_id: str):
     """
     Delete a product from the catalog and rebuild the index.
     """
     try:
         catalog_service.delete_product(product_id)
-        return {"message": "Product deleted successfully", "product_id": product_id}
+        return DeleteProductResponse(message="Product deleted successfully", product_id=product_id)
     except HTTPException:
         raise
     except ValueError as exc:
@@ -172,7 +197,7 @@ async def get_catalog_items(
     """
     return catalog_service.get_catalog_page(page, page_size)
 
-@app.get("/stats")
+@app.get("/stats", response_model=CatalogStats)
 async def get_stats():
     """
     Get statistics about the catalog

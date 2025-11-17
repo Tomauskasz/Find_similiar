@@ -1,18 +1,23 @@
 import logging
-import faiss
-import numpy as np
-from typing import List, Dict, Optional
-import cv2
 import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Dict, List, Optional
+
+import cv2
+import faiss
+import numpy as np
 
 from .models import Product, SearchResult
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".tif", ".webp"}
 logger = logging.getLogger(__name__)
 
+
 class SimilaritySearchEngine:
+    _COSINE_MIN = -1.0
+    _COSINE_MAX = 1.0
+
     def __init__(self, feature_dim: int = 512):
         """
         Initialize FAISS index for similarity search
@@ -22,10 +27,10 @@ class SimilaritySearchEngine:
         self.products: List[Product] = []
         self.feature_vectors: Dict[str, np.ndarray] = {}
         self.product_lookup: Dict[str, Product] = {}
-        self.product_id_to_index: Dict[str, int] = {}
         self.product_id_to_faiss_id: Dict[str, int] = {}
         self.faiss_id_to_product_id: Dict[int, str] = {}
         self.next_faiss_id: int = 0
+        self._feature_matrix_cache: Optional[np.ndarray] = None
         logger.info("Initialized FAISS index with dimension %s", feature_dim)
 
     def _init_index(self):
@@ -38,20 +43,20 @@ class SimilaritySearchEngine:
         self.products = []
         self.feature_vectors = {}
         self.product_lookup = {}
-        self.product_id_to_index = {}
         self.product_id_to_faiss_id = {}
         self.faiss_id_to_product_id = {}
         self.next_faiss_id = 0
+        self._feature_matrix_cache = None
 
     def _register_product(self, product: Product, normalized_vector: np.ndarray, faiss_id: int):
         if product.id in self.product_lookup:
             self.remove_product(product.id)
         self.products.append(product)
         self.product_lookup[product.id] = product
-        self.product_id_to_index[product.id] = len(self.products) - 1
         self.product_id_to_faiss_id[product.id] = faiss_id
         self.faiss_id_to_product_id[faiss_id] = product.id
         self.feature_vectors[product.id] = normalized_vector
+        self._feature_matrix_cache = None
 
     def add_product(self, product: Product, features: np.ndarray):
         """
@@ -80,7 +85,7 @@ class SimilaritySearchEngine:
         query_features = self._normalize_vector(query_features).reshape(1, -1).astype("float32")
         
         scores, ids = self.index.search(query_features, min(top_k, self.index.ntotal))
-        similarities = (np.clip(scores[0], -1.0, 1.0) + 1.0) / 2.0
+        similarities = self._to_client_similarity(scores[0])
         
         # Build results
         results = []
@@ -209,11 +214,11 @@ class SimilaritySearchEngine:
             self.products = data.get('products', [])
             self.feature_vectors = data.get('feature_vectors', {})
             self.product_lookup = {product.id: product for product in self.products}
-            self.product_id_to_index = {product.id: idx for idx, product in enumerate(self.products)}
             self.product_id_to_faiss_id = data.get('product_id_to_faiss_id', {})
             self.faiss_id_to_product_id = {faiss_id: pid for pid, faiss_id in self.product_id_to_faiss_id.items()}
             self.next_faiss_id = data.get('next_faiss_id', len(self.products))
             self.feature_dim = data.get('feature_dim', self.feature_dim)
+            self._feature_matrix_cache = None
 
     def get_product(self, product_id: str) -> Optional[Product]:
         return self.product_lookup.get(product_id)
@@ -229,7 +234,7 @@ class SimilaritySearchEngine:
         self.faiss_id_to_product_id.pop(faiss_id, None)
         self.feature_vectors.pop(product_id, None)
         self.products = [p for p in self.products if p.id != product_id]
-        self.product_id_to_index = {product.id: idx for idx, product in enumerate(self.products)}
+        self._feature_matrix_cache = None
         return removed_product
 
     def _normalize_vector(self, vector: np.ndarray) -> np.ndarray:
@@ -242,14 +247,35 @@ class SimilaritySearchEngine:
         """
         Count how many catalog items meet or exceed the provided cosine similarity threshold.
         """
-        if not self.feature_vectors:
+        feature_matrix = self._get_feature_matrix()
+        if feature_matrix is None:
             return 0
-        # Threshold provided by clients uses the 0..1 scale (after mapping cosine scores from [-1, 1]).
-        # Convert back to raw cosine values for comparison with stored normalized vectors.
-        cosine_threshold = (threshold * 2.0) - 1.0
-        if cosine_threshold <= -1.0:
+
+        cosine_threshold = self._from_client_threshold(threshold)
+        if cosine_threshold <= self._COSINE_MIN:
             return len(self.feature_vectors)
+
         normalized_query = self._normalize_vector(query_features)
-        feature_matrix = np.stack(list(self.feature_vectors.values()))
         similarities = feature_matrix @ normalized_query.astype("float32")
-        return int(np.sum(similarities >= cosine_threshold))
+        similarities = np.clip(similarities, self._COSINE_MIN, self._COSINE_MAX)
+        return int(np.count_nonzero(similarities >= cosine_threshold))
+
+    def _get_feature_matrix(self) -> Optional[np.ndarray]:
+        if not self.feature_vectors:
+            return None
+        if (
+            self._feature_matrix_cache is None
+            or self._feature_matrix_cache.shape[0] != len(self.feature_vectors)
+        ):
+            self._feature_matrix_cache = np.stack(list(self.feature_vectors.values()))
+        return self._feature_matrix_cache
+
+    @classmethod
+    def _to_client_similarity(cls, cosine_scores: np.ndarray) -> np.ndarray:
+        """Map cosine scores (-1..1) to the 0..1 scale exposed to API clients."""
+        return (np.clip(cosine_scores, cls._COSINE_MIN, cls._COSINE_MAX) + 1.0) / 2.0
+
+    @classmethod
+    def _from_client_threshold(cls, threshold: float) -> float:
+        """Convert the client-provided similarity threshold back to cosine space."""
+        return (threshold * 2.0) - 1.0

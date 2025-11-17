@@ -1,12 +1,18 @@
 from pathlib import Path
 from typing import Tuple
 
-from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AppConfig(BaseSettings):
     """Central configuration for the Visual Search system."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="VISUAL_SEARCH_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     # Catalog / index settings
     catalog_dir: Path = Field(default=Path("data/catalog"), description="Directory holding catalog imagery.")
@@ -48,13 +54,69 @@ class AppConfig(BaseSettings):
         description="Allowed image file extensions.",
     )
 
-    class Config:
-        env_prefix = "VISUAL_SEARCH_"
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-
     def format_supported_extensions(self) -> str:
         return ", ".join(ext.lstrip(".").upper() for ext in self.supported_image_formats)
+
+    # ------------------------------------------------------------------
+    # Validators
+    # ------------------------------------------------------------------
+    @field_validator(
+        "index_build_batch_size",
+        "index_build_workers",
+        "catalog_default_page_size",
+        "catalog_max_page_size",
+        "search_default_top_k",
+    )
+    @classmethod
+    def _validate_positive_int(cls, value: int, info):
+        if value < 1:
+            raise ValueError(f"{info.field_name} must be >= 1.")
+        return value
+
+    @field_validator("query_crop_ratio")
+    @classmethod
+    def _validate_crop_ratio(cls, value: float) -> float:
+        if not 0 < value <= 1:
+            raise ValueError("query_crop_ratio must be between 0 (exclusive) and 1 (inclusive).")
+        return value
+
+    @field_validator("search_min_similarity")
+    @classmethod
+    def _validate_similarity(cls, value: float) -> float:
+        if not 0 <= value <= 1:
+            raise ValueError("search_min_similarity must be between 0 and 1.")
+        return value
+
+    @field_validator("search_results_page_size")
+    @classmethod
+    def _validate_results_page_size(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("search_results_page_size must be >= 1.")
+        return value
+
+    @field_validator("supported_image_formats")
+    @classmethod
+    def _normalize_formats(cls, value: Tuple[str, ...]) -> Tuple[str, ...]:
+        normalized: list[str] = []
+        for ext in value:
+            formatted = ext.strip().lower()
+            if not formatted:
+                continue
+            if not formatted.startswith("."):
+                formatted = f".{formatted}"
+            if formatted not in normalized:
+                normalized.append(formatted)
+        if not normalized:
+            raise ValueError("supported_image_formats must include at least one extension.")
+        return tuple(normalized)
+
+    @model_validator(mode="after")
+    def _validate_relationships(self) -> "AppConfig":
+        if self.catalog_max_page_size < self.catalog_default_page_size:
+            raise ValueError("catalog_max_page_size must be >= catalog_default_page_size.")
+        if self.search_max_top_k < self.search_default_top_k:
+            raise ValueError("search_max_top_k must be >= search_default_top_k.")
+        return self
 
 
 app_config = AppConfig()

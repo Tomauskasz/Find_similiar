@@ -47,17 +47,17 @@ This document tracks the multi-pass refactor and cleanup effort for the Visual S
    - Extract repeated validation (image decoding, normalization) into helpers.
    - Enforce consistent error messaging and status codes.
    - Remove global mutable state where possible; encapsulate `search_engine` interactions.
-   - Document response schemas and header usage (e.g., `X-Total-Matches`).
+   - Document response schemas and header usage (e.g., `X-Total-Matches`). ✅ 2025-11-17: FastAPI responses now include explicit schemas/headers and README documents the `X-Total-Matches` contract.
 3. **`similarity_search.py`:**
-   - Deduplicate vector normalization and storage logic.
-   - Audit FAISS save/load logic for unused fields.
-   - Ensure `count_matches` and `search` share consistent math paths.
+   - Deduplicate vector normalization and storage logic. (Done 2025-11-17: shared helper methods + cached feature matrix.)
+   - Audit FAISS save/load logic for unused fields. (Done 2025-11-17: removed unused `product_id_to_index` metadata.)
+   - Ensure `count_matches` and `search` share consistent math paths. (Done 2025-11-17: added conversion helpers to share cosine math.)
 4. **`feature_extractor.py` / `gpu_utils.py`:**
-   - Confirm device selection is centralized.
-   - Remove noisy prints or replace with structured logging.
+   - Confirm device selection is centralized. ✅ 2025-11-17: `gpu_utils` now memoizes detection and powers all helpers via a single `DeviceStatus`.
+   - Remove noisy prints or replace with structured logging. ✅ 2025-11-17: detection helpers return metadata for FastAPI logging; `FeatureExtractor` remains logger-based with stricter batch guards.
 5. **Config & Settings:**
-   - Validate defaults, remove unused environment variables.
-   - Document every setting in code comments and README.
+   - Validate defaults, remove unused environment variables. ✅ 2025-11-17: Added strict Pydantic validators for ratios, pagination limits, search bounds, and normalized upload formats.
+   - Document every setting in code comments and README. ✅ 2025-11-17: README now includes a full configuration table with env var names + constraints.
 
 ### Phase 2 – Backend Scripts
 1. Consolidate duplicated CLI argument parsing patterns.
@@ -100,6 +100,10 @@ Each pass will add an entry below summarizing the files touched, rationale, and 
 
 | Date | Phase | Summary | Notes |
 | --- | --- | --- | --- |
+| 2025-11-17 | Phase 1 | Harmonized `SimilaritySearchEngine` normalization, scoring, and count paths by sharing cosine helpers, caching feature matrices, and trimming unused metadata. | Add unit tests to ensure `count_matches` mirrors `search` thresholds. |
+| 2025-11-17 | Phase 1 | Tightened `AppConfig` validation (crop ratios, search bounds, pagination limits, normalized upload formats) and documented every setting/env override in the README. | Confirm startup succeeds with custom `.env` values; add config-focused tests later. |
+| 2025-11-17 | Phase 1 | Centralized GPU detection behind a memoized `DeviceStatus` helper and hardened `FeatureExtractor` batch handling so tensor prep + logging stay consistent. | Validate feature extraction on CUDA/MPS/CPU paths when possible. |
+| 2025-11-17 | Phase 1 | Documented `/search` response headers plus typed add/delete/stats responses and synced README with the `X-Total-Matches` contract. | Consider adding FastAPI tests that assert header + schema behavior. |
 | 2025-11-17 | Phase 1 | Added shared FastAPI upload validation/decoding helpers, normalized query feature computation, and stricter parsing utilities. Both `/search` and `/add-product` now rely on the same vetted code paths. | Manual regression pending; add unit tests for helpers. |
 | 2025-11-17 | Phase 1 | Centralized catalog directory/id handling and image persistence helpers; removed duplicate logic from `/add-product` and ensured startup consistently prepares `data/catalog`. | Smoke test uploads + search when convenient. |
 | 2025-11-17 | Phase 1 | Refined `SimilaritySearchEngine.build_index_from_directory` to use `pathlib`, shared extension constants, and clearer batching/logging. Removed `os` dependency and simplified file handling. | Run catalog rebuild to verify behavior when possible. |
@@ -120,6 +124,7 @@ Each pass will add an entry below summarizing the files touched, rationale, and 
 
 1. Prioritize Phase 1 (Backend Core) and create subtasks for the first pass.
 2. For each pass:
+   - Update the Phase Overview
    - Update the checklist above.
    - Append an entry to the Change Log table.
    - Ensure code + documentation changes remain in sync.

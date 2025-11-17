@@ -67,15 +67,31 @@ Flags:
 On startup the backend checks whether `data/catalog_index.*` matches the current files; it rebuilds the FAISS cache automatically if files changed, were removed, or the embedding dimension differs.
 
 ## Configuration
-All important knobs are centralized in `backend/config.py` (the `AppConfig` class). Key options:
-- Catalog/index paths (`catalog_dir`, `index_base_path`), batch size, and worker counts for FAISS rebuilds plus catalog pagination limits (`catalog_default_page_size`, `catalog_max_page_size`).
-- CLIP backbone selection (`feature_model_name`, `feature_model_pretrained`).
-- Query augmentations (`query_use_horizontal_flip`, `query_use_center_crop`, `query_crop_ratio`).
-- Search limits (`search_default_top_k`, `search_max_top_k`) and minimum similarity filtering (`search_min_similarity`).
-- Frontend pagination size for query results (`search_results_page_size`).
-- Allowed upload formats (`supported_image_formats`, defaulting to JPG/JPEG/JFIF/PNG/GIF/BMP/TIFF/WebP).
+All important knobs live in `backend/config.py` (`AppConfig`). Override anything via `.env` or `VISUAL_SEARCH_*` variables. Every setting is validated at startup so invalid values fail fast instead of causing runtime surprises.
 
-You can override any value with environment variables prefixed by `VISUAL_SEARCH_`, or by placing the same entries inside a `.env` file in the repo root. Examples:
+### Key Settings
+
+| Setting | Env Var | Default | Notes |
+| --- | --- | --- | --- |
+| `catalog_dir` | `VISUAL_SEARCH_CATALOG_DIR` | `data/catalog` | Directory where catalog imagery is stored. |
+| `index_base_path` | `VISUAL_SEARCH_INDEX_BASE_PATH` | `data/catalog_index` | Base path for FAISS cache files (creates `.index` + `.pkl`). |
+| `index_build_batch_size` | `VISUAL_SEARCH_INDEX_BUILD_BATCH_SIZE` | `32` | Min `1`. Batch size for feature extraction when rebuilding the index. |
+| `index_build_workers` | `VISUAL_SEARCH_INDEX_BUILD_WORKERS` | `4` | Min `1`. Thread pool size for catalog ingestion. |
+| `cache_index_on_startup` | `VISUAL_SEARCH_CACHE_INDEX_ON_STARTUP` | `true` | If `true`, saves FAISS cache after building to speed future startups. |
+| `catalog_default_page_size` | `VISUAL_SEARCH_CATALOG_DEFAULT_PAGE_SIZE` | `40` | Min `1`. Default page size for the catalog browser. |
+| `catalog_max_page_size` | `VISUAL_SEARCH_CATALOG_MAX_PAGE_SIZE` | `200` | Must be ≥ default. Hard limit for catalog pagination. |
+| `feature_model_name` | `VISUAL_SEARCH_FEATURE_MODEL_NAME` | `ViT-B-32` | CLIP/OpenCLIP backbone. |
+| `feature_model_pretrained` | `VISUAL_SEARCH_FEATURE_MODEL_PRETRAINED` | `openai` | Weights identifier passed to OpenCLIP. |
+| `query_use_horizontal_flip` | `VISUAL_SEARCH_QUERY_USE_HORIZONTAL_FLIP` | `true` | Adds flipped variant during search. |
+| `query_use_center_crop` | `VISUAL_SEARCH_QUERY_USE_CENTER_CROP` | `true` | Adds cropped variant during search. |
+| `query_crop_ratio` | `VISUAL_SEARCH_QUERY_CROP_RATIO` | `0.9` | Must be `0 < ratio ≤ 1`. Size of the retained crop. |
+| `search_default_top_k` | `VISUAL_SEARCH_SEARCH_DEFAULT_TOP_K` | `200` | Min `1`. Used when clients omit `top_k`. |
+| `search_max_top_k` | `VISUAL_SEARCH_SEARCH_MAX_TOP_K` | `1000` | Must be ≥ default. Guards against unbounded searches. |
+| `search_min_similarity` | `VISUAL_SEARCH_SEARCH_MIN_SIMILARITY` | `0.8` | Must be between `0` and `1`. Minimum cosine similarity. |
+| `search_results_page_size` | `VISUAL_SEARCH_SEARCH_RESULTS_PAGE_SIZE` | `10` | Min `1`. Frontend page size for query results. |
+| `supported_image_formats` | `VISUAL_SEARCH_SUPPORTED_IMAGE_FORMATS` | `.jpg,.jpeg,.jfif,.png,.gif,.bmp,.tiff,.tif,.webp` | Comma-separated extensions, automatically normalized to lowercase with leading dots. |
+
+You can override any value by exporting the environment variable or adding it to `.env`:
 
 ```powershell
 set VISUAL_SEARCH_SEARCH_MAX_TOP_K=50
@@ -89,6 +105,8 @@ VISUAL_SEARCH_INDEX_BUILD_WORKERS=8
 VISUAL_SEARCH_CATALOG_MAX_PAGE_SIZE=150
 ```
 
+If a provided value breaks the documented constraints (e.g., `VISUAL_SEARCH_SEARCH_MIN_SIMILARITY=1.5` or `VISUAL_SEARCH_CATALOG_MAX_PAGE_SIZE` lower than the default), the backend fails fast during startup with a clear validation error so you can fix configuration issues immediately.
+
 ## API & UI Endpoints
 - Frontend SPA: http://localhost:3000
 - REST API root: http://localhost:8000
@@ -98,8 +116,30 @@ VISUAL_SEARCH_CATALOG_MAX_PAGE_SIZE=150
   - `POST /add-product` – upload a new catalog image (used by the catalog browser)
   - `GET /catalog/items` – paginated catalog listing (`page`, `page_size≤200`)
   - `DELETE /catalog/{product_id}` – remove a catalog entry (index rebuilds automatically)
-  - `GET /catalog` – legacy full catalog dump (unchanged)
-  - `GET /stats` – frontend boot metadata (page sizes, supported formats, etc.)
+- `GET /catalog` - legacy full catalog dump (unchanged)
+- `GET /stats` - frontend boot metadata (page sizes, supported formats, etc.)
+
+### Response Details
+
+- `POST /search` returns a JSON array of `SearchResult` objects (`product` + `similarity_score`) and emits an `X-Total-Matches` response header indicating how many catalog entries met the requested `min_similarity`. Clients can use that header to show aggregate result counts without fetching another page.
+
+- `POST /add-product` and `DELETE /catalog/{product_id}` both respond with `{ "message": "...", "product_id": "..." }` payloads so the UI can attribute toast/alert text to a specific catalog entry.
+
+- `GET /stats` returns the current backend configuration snapshot:
+
+```json
+{
+  "total_products": 128,
+  "model": "ViT-B-32",
+  "feature_dim": 512,
+  "search_max_top_k": 1000,
+  "search_min_similarity": 0.8,
+  "results_page_size": 10,
+  "supported_formats": [".jpg", ".png", "..."],
+  "catalog_default_page_size": 40,
+  "catalog_max_page_size": 200
+}
+```
 
 - **Catalog Browser**:
   - Switch to the "Catalog Browser" tab in the UI to list every catalog entry.
