@@ -48,17 +48,27 @@ class SimilaritySearchEngine:
         self.next_faiss_id = 0
         self._feature_matrix_cache = None
 
-    def _register_product(self, product: Product, normalized_vector: np.ndarray, faiss_id: int):
+    def _register_product(
+        self,
+        product: Product,
+        normalized_vector: np.ndarray,
+        faiss_id: int,
+        *,
+        position: str = "end",
+    ):
         if product.id in self.product_lookup:
             self.remove_product(product.id)
-        self.products.append(product)
+        if position == "front":
+            self.products.insert(0, product)
+        else:
+            self.products.append(product)
         self.product_lookup[product.id] = product
         self.product_id_to_faiss_id[product.id] = faiss_id
         self.faiss_id_to_product_id[faiss_id] = product.id
         self.feature_vectors[product.id] = normalized_vector
         self._feature_matrix_cache = None
 
-    def add_product(self, product: Product, features: np.ndarray):
+    def add_product(self, product: Product, features: np.ndarray, *, position: str = "end"):
         """
         Add a product to the search index
         """
@@ -68,7 +78,7 @@ class SimilaritySearchEngine:
         self.next_faiss_id += 1
         ids = np.array([faiss_id], dtype='int64')
         self.index.add_with_ids(features_2d, ids)
-        self._register_product(product, normalized, faiss_id)
+        self._register_product(product, normalized, faiss_id, position=position)
     
     def search(
         self,

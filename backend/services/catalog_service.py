@@ -1,7 +1,7 @@
 import logging
 import math
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Set
 
 import cv2
 import numpy as np
@@ -66,6 +66,9 @@ class CatalogService:
             if missing:
                 logger.warning("Detected %s missing image files. Cached index invalid.", len(missing))
                 return False
+            if not self._catalog_snapshot_matches_index():
+                logger.info("Catalog directory contents changed since the last cached index build.")
+                return False
             logger.info("Loaded %s products from cache", self.search_engine.get_catalog_size())
             return True
         except Exception as exc:
@@ -111,7 +114,7 @@ class CatalogService:
             category=category,
             price=price,
         )
-        self.search_engine.add_product(product, features)
+        self.search_engine.add_product(product, features, position="front")
         self._cache_index_to_disk()
         return product
 
@@ -120,9 +123,7 @@ class CatalogService:
         if not product:
             raise ValueError("Product not found.")
 
-        image_path = Path(product.image_path)
-        if not image_path.is_absolute():
-            image_path = Path.cwd() / image_path
+        image_path = self._resolve_image_path(product.image_path)
         if image_path.exists():
             image_path.unlink()
 
@@ -170,6 +171,37 @@ class CatalogService:
     # ------------------------------------------------------------------ #
     # Internal helpers
     # ------------------------------------------------------------------ #
+    def _resolve_image_path(self, image_path: str | Path) -> Path:
+        path = Path(image_path)
+        if not path.is_absolute():
+            path = (Path.cwd() / path).resolve()
+        return path
+
+    def _catalog_disk_snapshot(self) -> Set[Path]:
+        if not self.config.catalog_dir.exists():
+            return set()
+        supported = set(self.config.supported_image_formats)
+        return {
+            path.resolve()
+            for path in self.config.catalog_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in supported
+        }
+
+    def _catalog_cached_snapshot(self) -> Set[Path]:
+        return {self._resolve_image_path(product.image_path) for product in self.search_engine.products}
+
+    def _catalog_snapshot_matches_index(self) -> bool:
+        disk_snapshot = self._catalog_disk_snapshot()
+        cached_snapshot = self._catalog_cached_snapshot()
+        if disk_snapshot != cached_snapshot:
+            logger.info(
+                "Catalog snapshot mismatch: %s disk files vs %s indexed entries.",
+                len(disk_snapshot),
+                len(cached_snapshot),
+            )
+            return False
+        return True
+
     def _save_catalog_image(self, image: np.ndarray, product_id: str) -> Path:
         catalog_dir = self.config.catalog_dir
         catalog_dir.mkdir(parents=True, exist_ok=True)

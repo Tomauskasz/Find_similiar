@@ -8,7 +8,6 @@ pydantic>=2.5.0
 pydantic-settings>=2.1.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-Pillow>=10.0
 tqdm>=4.66.1
 ftfy>=6.1.1
 regex>=2023.10.3

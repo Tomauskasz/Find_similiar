@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import './ImageUpload.css';
 
@@ -19,14 +19,19 @@ function ImageUpload({
   loading,
   supportedFormats,
   onRunSearch,
+  previewImage,
 }) {
-  const [preview, setPreview] = useState(null);
+  const [preview, setPreview] = useState(previewImage || null);
   const [error, setError] = useState(null);
   const acceptedFormats = supportedFormats && supportedFormats.length > 0 ? supportedFormats : FALLBACK_FORMATS;
   const formatDisplay = useMemo(
     () => acceptedFormats.map((fmt) => fmt.replace('.', '').toUpperCase()).join(', '),
     [acceptedFormats]
   );
+
+  useEffect(() => {
+    setPreview(previewImage || null);
+  }, [previewImage]);
 
   const onDrop = useCallback(
     async (acceptedFiles) => {

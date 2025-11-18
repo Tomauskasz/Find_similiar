@@ -19,6 +19,8 @@ function SearchResults({
   onFindMatches,
 }) {
   const [selectedResult, setSelectedResult] = useState(null);
+  const modalTitleId = selectedResult ? `result-modal-title-${selectedResult.product.id}` : undefined;
+  const modalDescriptionId = selectedResult ? `result-modal-description-${selectedResult.product.id}` : undefined;
   const totalResults = results.length;
   const totalLabelCount =
     typeof totalMatches === 'number' && !Number.isNaN(totalMatches) ? totalMatches : totalResults;
@@ -97,7 +99,14 @@ function SearchResults({
       )}
 
       {selectedResult && (
-        <div className="catalog-modal" onClick={() => setSelectedResult(null)} role="presentation">
+        <div
+          className="catalog-modal"
+          onClick={() => setSelectedResult(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={modalTitleId}
+          aria-describedby={modalDescriptionId}
+        >
           <div className="catalog-modal__content" onClick={(event) => event.stopPropagation()}>
             <button
               type="button"
@@ -111,8 +120,8 @@ function SearchResults({
               src={`${API_URL}/${getProductImagePath(selectedResult.product)}`}
               alt={selectedResult.product.name}
             />
-            <div className="modal-details">
-              <h3>{selectedResult.product.name}</h3>
+            <div className="modal-details" id={modalDescriptionId}>
+              <h3 id={modalTitleId}>{selectedResult.product.name}</h3>
               <p>
                 Similarity: {(selectedResult.similarity_score * 100).toFixed(1)}%
                 {selectedResult.product.category && (

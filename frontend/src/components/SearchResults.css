@@ -1,4 +1,6 @@
 .results-container {
+  position: relative;
+  z-index: 1;
   animation: fadeIn 0.5s ease-in;
   background: rgba(6, 11, 21, 0.75);
   border: 1px solid rgba(148, 163, 184, 0.2);

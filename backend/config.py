@@ -30,7 +30,7 @@ class AppConfig(BaseSettings):
     # Query augmentation settings
     query_use_horizontal_flip: bool = Field(default=True, description="Include a horizontal flip query variant.")
     query_use_center_crop: bool = Field(default=True, description="Include a center crop variant.")
-    query_crop_ratio: float = Field(default=0.9, description="Percent of the image kept when center-cropping.")
+    query_crop_ratio: float = Field(default=0.8, description="Percent of the image kept when center-cropping.")
 
     # Search settings
     search_default_top_k: int = Field(default=200, description="Fallback top-k when clients omit the value.")

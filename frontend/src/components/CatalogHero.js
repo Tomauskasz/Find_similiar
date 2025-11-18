@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
 const CatalogHero = ({
   totalItems,
@@ -16,6 +16,9 @@ const CatalogHero = ({
 }) => {
   const [isSelectorHover, setIsSelectorHover] = useState(false);
   const [isUploadHover, setIsUploadHover] = useState(false);
+  const uploadHintId = useMemo(() => 'catalog-upload-hint', []);
+  const uploadErrorId = useMemo(() => 'catalog-upload-error', []);
+  const uploadDescribedBy = uploadError ? `${uploadHintId} ${uploadErrorId}` : uploadHintId;
 
   return (
     <div className="catalog-hero">
@@ -65,17 +68,25 @@ const CatalogHero = ({
             className="upload-chip upload-chip--stretch"
             onMouseEnter={() => setIsUploadHover(true)}
             onMouseLeave={() => setIsUploadHover(false)}
+            aria-label="Add a product to the catalog"
           >
             <input
               type="file"
               accept={acceptedFormats.join(',')}
               onChange={onUpload}
               disabled={!backendReady || uploading}
+              aria-describedby={uploadDescribedBy}
             />
-            <span>{uploading ? 'Uploading...' : 'Add to catalog'}</span>
+            <span className="upload-chip__label">{uploading ? 'Uploading...' : 'Add to catalog'}</span>
           </label>
-          <p className="hint">Accepted: {acceptedFormats.map((ext) => ext.replace('.', '').toUpperCase()).join(', ')}</p>
-          {uploadError && <p className="field-error">{uploadError}</p>}
+          <p className="catalog-upload__hint" id={uploadHintId}>
+            Accepted: {acceptedFormats.map((ext) => ext.replace('.', '').toUpperCase()).join(', ')}
+          </p>
+          {uploadError && (
+            <p className="catalog-upload__error" id={uploadErrorId} aria-live="polite">
+              {uploadError}
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -198,6 +198,8 @@ const CatalogBrowser = ({
   };
 
   const dashboardClassName = `catalog-dashboard${isPageSizeMenuOpen ? ' dropdown-open' : ''}`;
+  const modalTitleId = selectedItem ? `catalog-modal-title-${selectedItem.id}` : undefined;
+  const modalDescriptionId = selectedItem ? `catalog-modal-description-${selectedItem.id}` : undefined;
 
   return (
     <section className={dashboardClassName}>
@@ -243,14 +245,21 @@ const CatalogBrowser = ({
       {pageInputError && <p className="page-input-error">{pageInputError}</p>}
 
       {selectedItem && (
-        <div className="catalog-modal" onClick={() => setSelectedItem(null)} role="presentation">
+        <div
+          className="catalog-modal"
+          onClick={() => setSelectedItem(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={modalTitleId}
+          aria-describedby={modalDescriptionId}
+        >
           <div className="catalog-modal__content" onClick={(event) => event.stopPropagation()}>
             <button type="button" className="close-modal" onClick={() => setSelectedItem(null)} aria-label="Close">
               x
             </button>
             <img src={`${apiUrl}/${normalizeImagePath(selectedItem.image_path)}`} alt={selectedItem.name} />
-            <div className="modal-details">
-              <h3>{selectedItem.name}</h3>
+            <div className="modal-details" id={modalDescriptionId}>
+              <h3 id={modalTitleId}>{selectedItem.name}</h3>
               {selectedItem.category && (
                 <p className="modal-meta">
                   <span>{selectedItem.category}</span>

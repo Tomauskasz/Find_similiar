@@ -6,7 +6,7 @@ import useBackendStats from './hooks/useBackendStats';
 import useConfidence from './hooks/useConfidence';
 import useCatalogView from './hooks/useCatalogView';
 import useSearchResults from './hooks/useSearchResults';
-import { fetchProductImageForSearch, scrollResultsIntoView } from './utils/productSearch';
+import { buildAssetUrl, fetchProductImageForSearch, scrollResultsIntoView } from './utils/productSearch';
 import { createApiClient, searchSimilar } from './services/apiClient';
 import './App.css';
 
@@ -113,7 +113,8 @@ function App() {
     loadMore(resultsPageSize, confidence);
   };
 
-  const runSearchWithFile = useCallback(async (file, previewDataUrl, thresholdOverride) => {
+  const runSearchWithFile = useCallback(async (file, previewDataUrl, options = {}) => {
+    const { thresholdOverride, excludeProductId } = options;
     if (!file) {
       throw new Error('Please upload an image before searching.');
     }
@@ -122,6 +123,9 @@ function App() {
         ? thresholdOverride
         : confidence;
     lastQueryFileRef.current = file;
+    if (typeof previewDataUrl === 'string' && previewDataUrl.length > 0) {
+      setUploadedImage(previewDataUrl);
+    }
     setSliderError(null);
     setLoading(true);
     try {
@@ -131,7 +135,23 @@ function App() {
       formData.append('min_similarity', String(threshold));
       const response = await searchSimilar(memoizedClient, formData);
       const totalMatchesHeader = Number(response.headers['x-total-matches']);
-      handleSearchComplete(response.data, previewDataUrl ?? uploadedImage, totalMatchesHeader, threshold);
+      const rawResults = response.data || [];
+      const filteredResults =
+        excludeProductId != null
+          ? rawResults.filter(
+              (result) => result?.product?.id !== excludeProductId
+            )
+          : rawResults;
+      const removedCount = rawResults.length - filteredResults.length;
+      const adjustedTotalMatches = Number.isFinite(totalMatchesHeader)
+        ? Math.max(0, totalMatchesHeader - removedCount)
+        : undefined;
+      handleSearchComplete(
+        filteredResults,
+        previewDataUrl ?? uploadedImage,
+        adjustedTotalMatches,
+        threshold
+      );
       scrollResultsIntoView();
     } catch (err) {
       console.error('Search error:', err);
@@ -146,9 +166,13 @@ function App() {
   const handleFindMatchesFromProduct = async (product) => {
     if (!product) return;
     selectView('search');
+    if (product.image_path) {
+      const assetUrl = buildAssetUrl(API_URL, product.image_path);
+      setUploadedImage(assetUrl);
+    }
     try {
       const { file, dataUrl } = await fetchProductImageForSearch(product, API_URL);
-      await runSearchWithFile(file, dataUrl);
+      await runSearchWithFile(file, dataUrl, { excludeProductId: product.id });
     } catch (err) {
       console.error('Find matches error:', err);
       setSliderError(err.message || 'Unable to search for this item right now.');
@@ -168,7 +192,7 @@ function App() {
       setSliderError(null);
       return;
     }
-    runSearchWithFile(lastQueryFileRef.current, uploadedImage, nextValue).catch((error) => {
+    runSearchWithFile(lastQueryFileRef.current, uploadedImage, { thresholdOverride: nextValue }).catch((error) => {
       setSliderError(error.message);
     });
   };
@@ -255,6 +279,7 @@ function App() {
               backendReady={backendReady}
               loading={loading}
               supportedFormats={supportedFormats}
+              previewImage={uploadedImage}
             />
 
             {!backendReady && (
