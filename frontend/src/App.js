@@ -6,7 +6,7 @@ import useBackendStats from './hooks/useBackendStats';
 import useConfidence from './hooks/useConfidence';
 import useCatalogView from './hooks/useCatalogView';
 import useSearchResults from './hooks/useSearchResults';
-import { blobToDataUrl, normalizeImagePath } from './utils/image';
+import { fetchProductImageForSearch, scrollResultsIntoView } from './utils/productSearch';
 import { createApiClient, searchSimilar } from './services/apiClient';
 import './App.css';
 
@@ -132,14 +132,7 @@ function App() {
       const response = await searchSimilar(memoizedClient, formData);
       const totalMatchesHeader = Number(response.headers['x-total-matches']);
       handleSearchComplete(response.data, previewDataUrl ?? uploadedImage, totalMatchesHeader, threshold);
-      requestAnimationFrame(() => {
-        const root = document.querySelector('.results-container') || document.querySelector('.App-main');
-        if (root) {
-          root.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        } else {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-      });
+      scrollResultsIntoView();
     } catch (err) {
       console.error('Search error:', err);
       const message =
@@ -150,33 +143,11 @@ function App() {
     }
   }, [memoizedClient, confidence, maxResults, uploadedImage, handleSearchComplete]);
 
-  const fetchProductImageForSearch = async (product) => {
-    if (!product?.image_path) {
-      throw new Error('Selected item has no associated image.');
-    }
-    const normalizedPath = normalizeImagePath(product.image_path).replace(/^data\//, '');
-    const encodedPath = normalizedPath
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
-    const assetUrl = `${API_URL}/asset/${encodedPath}`;
-    const response = await fetch(assetUrl);
-    if (!response.ok) {
-      throw new Error('Failed to download image for search.');
-    }
-    const blob = await response.blob();
-    const extension = (product.image_path.split('.').pop() || 'jpg').split('?')[0];
-    const fileName = `${product.id || 'catalog_image'}.${extension}`;
-    const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
-    const dataUrl = await blobToDataUrl(blob);
-    return { file, dataUrl };
-  };
-
   const handleFindMatchesFromProduct = async (product) => {
     if (!product) return;
     selectView('search');
     try {
-      const { file, dataUrl } = await fetchProductImageForSearch(product);
+      const { file, dataUrl } = await fetchProductImageForSearch(product, API_URL);
       await runSearchWithFile(file, dataUrl);
     } catch (err) {
       console.error('Find matches error:', err);

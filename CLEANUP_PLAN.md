@@ -68,7 +68,7 @@ This document tracks the multi-pass refactor and cleanup effort for the Visual S
 ### Phase 3 – Frontend App & Components
 1. **State Management:**
    - Audit `useState` usage; collapse related state into reducers where necessary.
-   - Extract repeated API calling logic into hooks (`useBackendStats`, `useCatalog`). ✅ 2025-11-17: `useCatalog` now centralizes catalog fetching/loading/error state for `CatalogBrowser`.
+   - Extract repeated API calling logic into hooks (`useBackendStats`, `useCatalog`). ✅ 2025-11-17: `useCatalog` centralizes catalog fetching/loading/error state; 2025-11-18: `useSearchResults` manages App.js results/pagination.
 2. **Components:**
    - Break down oversized components (e.g., `CatalogBrowser`, `App`). ✅ 2025-11-17: Split `CatalogBrowser` into `CatalogHero` + `CatalogCard` and moved hover logic locally to reduce prop churn.
    - Remove unused props/styles. ✅ 2025-11-17: Pruned unused CSS selectors (`.muted`, `.catalog-toolbar`) and redundant React imports after the CatalogBrowser refactor.
@@ -106,6 +106,8 @@ Each pass will add an entry below summarizing the files touched, rationale, and 
 | 2025-11-17 | Phase 5 | Updated README/AGENTS with the new PyTorch installer retry flags and PASS download dry-run instructions so onboarding docs stay accurate. | None. |
 | 2025-11-18 | Phase 5 | Seeded backend Pytest coverage with `backend/tests/test_upload_utils.py` to lock in the new upload/query helpers. | `pytest backend/tests/test_upload_utils.py` (install pytest when ready). |
 | 2025-11-18 | Phase 1 | Added `backend/tests/test_similarity_search.py` to verify search ordering and threshold counts match the refactored FAISS math. | `pytest backend/tests/test_similarity_search.py` (requires pytest). |
+| 2025-11-18 | Phase 3 | Extracted `useSearchResults` and refactored `App.js` to consume it, eliminating duplicated filtering state and satisfying hook dependencies. | Verify search flow + load-more still behave with the new hook. |
+| 2025-11-18 | Phase 3 | Moved product image fetch + scroll logic into `utils/productSearch` to keep `App.js` lean and reusable for future hooks/components. | Re-test "Find matches" + search scroll behavior. |
 | 2025-11-17 | Phase 3 | Introduced `useCatalog` and refactored `CatalogBrowser` to consume it, shrinking local state and centralizing fetch/loading/error logic. | Re-test catalog pagination, uploads, deletes, and the "Find matches" action. |
 | 2025-11-17 | Phase 1 | Harmonized `SimilaritySearchEngine` normalization, scoring, and count paths by sharing cosine helpers, caching feature matrices, and trimming unused metadata. | Add unit tests to ensure `count_matches` mirrors `search` thresholds. |
 | 2025-11-17 | Phase 1 | Tightened `AppConfig` validation (crop ratios, search bounds, pagination limits, normalized upload formats) and documented every setting/env override in the README. | Confirm startup succeeds with custom `.env` values; add config-focused tests later. |
