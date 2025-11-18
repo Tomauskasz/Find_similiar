@@ -260,11 +260,6 @@ const CatalogBrowser = ({
             <img src={`${apiUrl}/${normalizeImagePath(selectedItem.image_path)}`} alt={selectedItem.name} />
             <div className="modal-details" id={modalDescriptionId}>
               <h3 id={modalTitleId}>{selectedItem.name}</h3>
-              {selectedItem.category && (
-                <p className="modal-meta">
-                  <span>{selectedItem.category}</span>
-                </p>
-              )}
               {typeof onFindMatches === 'function' && (
                 <button
                   type="button"

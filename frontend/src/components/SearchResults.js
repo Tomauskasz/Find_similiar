@@ -78,13 +78,6 @@ function SearchResults({
                 </div>
               </div>
 
-              {result.product.category && (
-                <p className="category">
-                  <span className="label">Category:</span> {result.product.category}
-                </p>
-              )}
-
-              {result.product.price && <p className="price">${result.product.price.toFixed(2)}</p>}
             </div>
           </div>
         ))}
@@ -122,15 +115,7 @@ function SearchResults({
             />
             <div className="modal-details" id={modalDescriptionId}>
               <h3 id={modalTitleId}>{selectedResult.product.name}</h3>
-              <p>
-                Similarity: {(selectedResult.similarity_score * 100).toFixed(1)}%
-                {selectedResult.product.category && (
-                  <>
-                    {' '}
-                    · <span>{selectedResult.product.category}</span>
-                  </>
-                )}
-              </p>
+              <p>Similarity: {(selectedResult.similarity_score * 100).toFixed(1)}%</p>
               {typeof onFindMatches === 'function' && (
                 <button
                   type="button"

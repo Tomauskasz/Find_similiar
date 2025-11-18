@@ -100,8 +100,6 @@ class CatalogService:
         image: np.ndarray,
         product_id: Optional[str] = None,
         name: Optional[str] = None,
-        category: Optional[str] = None,
-        price: Optional[float] = None,
     ) -> Product:
         product_id = self._resolve_product_id(product_id)
         image_path = self._save_catalog_image(image, product_id)
@@ -111,8 +109,6 @@ class CatalogService:
             id=product_id,
             name=name or product_id,
             image_path=image_path.as_posix(),
-            category=category,
-            price=price,
         )
         self.search_engine.add_product(product, features, position="front")
         self._cache_index_to_disk()

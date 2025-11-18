@@ -33,6 +33,7 @@ data/
 *.h5
 *.pkl
 *.index
+AGENTS.md
 
 # IDEs
 .vscode/

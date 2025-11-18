@@ -139,8 +139,6 @@ async def add_product(
     file: UploadFile = File(...),
     product_id: str | None = Form(None),
     name: str | None = Form(None),
-    category: str | None = Form(None),
-    price: float | None = Form(None)
 ):
     """
     Add a new product to the catalog
@@ -153,8 +151,6 @@ async def add_product(
             image=image,
             product_id=product_id,
             name=name,
-            category=category,
-            price=price,
         )
         return AddProductResponse(message="Product added successfully", product_id=product.id)
     
