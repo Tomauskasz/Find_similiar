@@ -23,11 +23,6 @@
   z-index: 10;
 }
 
-.muted {
-  color: rgba(230, 237, 255, 0.75);
-  margin: 0;
-}
-
 .catalog-hero__stats {
   display: flex;
   gap: 0.9rem;
@@ -629,10 +624,6 @@
 @media (max-width: 768px) {
   .catalog-dashboard {
     padding: 1.5rem;
-  }
-
-  .catalog-toolbar {
-    grid-template-columns: 1fr;
   }
 }
 .catalog-grid {

@@ -51,7 +51,7 @@ This document tracks the multi-pass refactor and cleanup effort for the Visual S
 3. **`similarity_search.py`:**
    - Deduplicate vector normalization and storage logic. (Done 2025-11-17: shared helper methods + cached feature matrix.)
    - Audit FAISS save/load logic for unused fields. (Done 2025-11-17: removed unused `product_id_to_index` metadata.)
-   - Ensure `count_matches` and `search` share consistent math paths. (Done 2025-11-17: added conversion helpers to share cosine math.)
+   - Ensure `count_matches` and `search` share consistent math paths. (Done 2025-11-17: added conversion helpers to share cosine math. ✅ Tests added 2025-11-18.)
 4. **`feature_extractor.py` / `gpu_utils.py`:**
    - Confirm device selection is centralized. ✅ 2025-11-17: `gpu_utils` now memoizes detection and powers all helpers via a single `DeviceStatus`.
    - Remove noisy prints or replace with structured logging. ✅ 2025-11-17: detection helpers return metadata for FastAPI logging; `FeatureExtractor` remains logger-based with stricter batch guards.
@@ -71,7 +71,7 @@ This document tracks the multi-pass refactor and cleanup effort for the Visual S
    - Extract repeated API calling logic into hooks (`useBackendStats`, `useCatalog`). ✅ 2025-11-17: `useCatalog` now centralizes catalog fetching/loading/error state for `CatalogBrowser`.
 2. **Components:**
    - Break down oversized components (e.g., `CatalogBrowser`, `App`). ✅ 2025-11-17: Split `CatalogBrowser` into `CatalogHero` + `CatalogCard` and moved hover logic locally to reduce prop churn.
-   - Remove unused props/styles.
+   - Remove unused props/styles. ✅ 2025-11-17: Pruned unused CSS selectors (`.muted`, `.catalog-toolbar`) and redundant React imports after the CatalogBrowser refactor.
    - Ensure modals, sliders, and uploads share accessible patterns.
 3. **Networking:**
    - Centralize Axios configuration & error handling.
@@ -82,10 +82,10 @@ This document tracks the multi-pass refactor and cleanup effort for the Visual S
 2. Convert duplicated gradient/color definitions into CSS variables/token files.
 3. Minimize global styles; scope to components when possible.
 
-### Phase 5 – Documentation & Tooling
-1. Sync README with actual dev workflow (e.g., `/asset` route, new modals).
-2. Update `AGENTS.md` with any new conventions discovered during cleanup.
-3. Add template tests (Pytest + RTL) covering new helper modules.
+### Phase 5 - Documentation & Tooling
+1. Sync README with actual dev workflow (e.g., `/asset` route, new modals). ✅ 2025-11-17: README now documents PyTorch installer retry flags and PASS script dry-run/retry options.
+2. Update `AGENTS.md` with any new conventions discovered during cleanup. ✅ 2025-11-17: AGENTS covers the installer/catalog script flags so new contributors know about them.
+3. Add template tests (Pytest + RTL) covering new helper modules. ✅ 2025-11-18: Added `backend/tests/test_upload_utils.py` when seeding the backend test suite.
 
 ### Phase 6 – Validation
 1. Manual regression checklist (uploads, catalog operations, find matches).
@@ -102,6 +102,10 @@ Each pass will add an entry below summarizing the files touched, rationale, and 
 | --- | --- | --- | --- |
 | 2025-11-17 | Phase 2 | Added shared CLI/retry utilities, PASS catalog dry-run mode, and pip retry flags so download/install scripts share consistent backoff behavior. | Exercise both scripts when convenient to verify retry UX + dry-run output. |
 | 2025-11-17 | Phase 3 | Broke `CatalogBrowser` into `CatalogHero` + `CatalogCard` subcomponents to simplify UI logic and confine hover/upload state locally. | Reconfirm catalog pagination, uploads, deletes, and modal actions. |
+| 2025-11-17 | Phase 3 | Removed unused CatalogBrowser props/styles (dead CSS selectors + unused React imports) to keep the component surface lean after recent refactors. | Rebuild frontend to verify no CSS regressions. |
+| 2025-11-17 | Phase 5 | Updated README/AGENTS with the new PyTorch installer retry flags and PASS download dry-run instructions so onboarding docs stay accurate. | None. |
+| 2025-11-18 | Phase 5 | Seeded backend Pytest coverage with `backend/tests/test_upload_utils.py` to lock in the new upload/query helpers. | `pytest backend/tests/test_upload_utils.py` (install pytest when ready). |
+| 2025-11-18 | Phase 1 | Added `backend/tests/test_similarity_search.py` to verify search ordering and threshold counts match the refactored FAISS math. | `pytest backend/tests/test_similarity_search.py` (requires pytest). |
 | 2025-11-17 | Phase 3 | Introduced `useCatalog` and refactored `CatalogBrowser` to consume it, shrinking local state and centralizing fetch/loading/error logic. | Re-test catalog pagination, uploads, deletes, and the "Find matches" action. |
 | 2025-11-17 | Phase 1 | Harmonized `SimilaritySearchEngine` normalization, scoring, and count paths by sharing cosine helpers, caching feature matrices, and trimming unused metadata. | Add unit tests to ensure `count_matches` mirrors `search` thresholds. |
 | 2025-11-17 | Phase 1 | Tightened `AppConfig` validation (crop ratios, search bounds, pagination limits, normalized upload formats) and documented every setting/env override in the README. | Confirm startup succeeds with custom `.env` values; add config-focused tests later. |
@@ -128,7 +132,7 @@ Each pass will add an entry below summarizing the files touched, rationale, and 
 1. Prioritize Phase 1 (Backend Core) and create subtasks for the first pass.
 2. For each pass:
    - Update the "3. Phase Overview"
-   - Update the checklist above.
+   - Update the checklist above "4. Detailed Phase Checklists".
    - Append an entry to the Change Log table.
    - Ensure code + documentation changes remain in sync.
 

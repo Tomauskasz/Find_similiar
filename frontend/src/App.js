@@ -5,6 +5,7 @@ import CatalogBrowser from './components/CatalogBrowser';
 import useBackendStats from './hooks/useBackendStats';
 import useConfidence from './hooks/useConfidence';
 import useCatalogView from './hooks/useCatalogView';
+import useSearchResults from './hooks/useSearchResults';
 import { blobToDataUrl, normalizeImagePath } from './utils/image';
 import { createApiClient, searchSimilar } from './services/apiClient';
 import './App.css';
@@ -17,10 +18,8 @@ const CONFIDENCE_MAX = 0.99;
 const CONFIDENCE_STEP = 0.01;
 
 function App() {
-  const [rawResults, setRawResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploadedImage, setUploadedImage] = useState(null);
-  const [visibleCount, setVisibleCount] = useState(0);
   const memoizedClient = useMemo(() => createApiClient(API_URL), []);
   const { backendReady, backendStats, backendAttempts, backendError } = useBackendStats(memoizedClient);
   const [activeView, selectView] = useCatalogView('search');
@@ -37,24 +36,30 @@ function App() {
     syncBackendConfidence,
   } = useConfidence(0.8);
   const confidenceInitialized = useRef(false);
-  const [totalMatches, setTotalMatches] = useState(0);
   const lastQueryFileRef = useRef(null);
   const [sliderError, setSliderError] = useState(null);
+  const {
+    rawResults,
+    setRawResults,
+    getFilteredResults,
+    visibleCount,
+    setVisibleCount,
+    totalMatches,
+    setTotalMatches,
+    loadMore,
+  } = useSearchResults();
 
   const resultsPageSize = backendStats?.results_page_size ?? DEFAULT_PAGE_SIZE;
   const maxResults = backendStats?.search_max_top_k ?? 100;
   const supportedFormats = backendStats?.supported_formats ?? DEFAULT_SUPPORTED_FORMATS;
   const minSimilarity = confidence;
-  const filteredResults = useMemo(
-    () => rawResults.filter((result) => result.similarity_score >= confidence),
-    [rawResults, confidence]
-  );
+  const filteredResultsList = useMemo(() => getFilteredResults(confidence), [getFilteredResults, confidence]);
   const totalMatchesDisplay =
     typeof totalMatches === 'number' &&
     totalMatches > 0 &&
     Math.abs(confidence - lastSearchConfidence) < 0.0001
       ? totalMatches
-      : filteredResults.length;
+      : filteredResultsList.length;
 
   useEffect(() => {
     const backendThreshold = backendStats?.search_min_similarity;
@@ -70,15 +75,15 @@ function App() {
 
   useEffect(() => {
     setVisibleCount((current) => {
-      if (filteredResults.length === 0) {
+      if (filteredResultsList.length === 0) {
         return 0;
       }
       if (current === 0) {
-        return Math.min(resultsPageSize, filteredResults.length);
+        return Math.min(resultsPageSize, filteredResultsList.length);
       }
-      return Math.min(current, filteredResults.length);
+      return Math.min(current, filteredResultsList.length);
     });
-  }, [filteredResults.length, resultsPageSize]);
+  }, [filteredResultsList.length, resultsPageSize, setVisibleCount]);
 
   const handleSearchComplete = useCallback(
     (searchResults, imageUrl, totalMatchCount, appliedConfidence) => {
@@ -101,11 +106,11 @@ function App() {
       markSearchConfidence(thresholdForCounts);
       setSliderError(null);
     },
-    [uploadedImage, confidence, resultsPageSize, markSearchConfidence]
+    [uploadedImage, confidence, resultsPageSize, markSearchConfidence, setRawResults, setVisibleCount, setTotalMatches]
   );
 
   const handleLoadMore = () => {
-    setVisibleCount((count) => Math.min(count + resultsPageSize, filteredResults.length));
+    loadMore(resultsPageSize, confidence);
   };
 
   const runSearchWithFile = useCallback(async (file, previewDataUrl, thresholdOverride) => {
@@ -299,9 +304,9 @@ function App() {
               </div>
             )}
 
-            {backendReady && !loading && filteredResults.length > 0 && (
+            {backendReady && !loading && filteredResultsList.length > 0 && (
               <SearchResults
-                results={filteredResults}
+                results={filteredResultsList}
                 queryImage={uploadedImage}
                 visibleCount={visibleCount}
                 onLoadMore={handleLoadMore}
@@ -311,7 +316,7 @@ function App() {
               />
             )}
 
-            {backendReady && !loading && rawResults.length > 0 && filteredResults.length === 0 && (
+            {backendReady && !loading && rawResults.length > 0 && filteredResultsList.length === 0 && (
               <div className="confidence-empty-state">
                 <p>No matches meet the {appliedConfidencePercent}% confidence threshold.</p>
                 <p>Lower the slider to review more candidates.</p>

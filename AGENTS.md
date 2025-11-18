@@ -10,7 +10,8 @@
 - Preferred loop: `run.bat` (Windows) or `run.sh` (macOS/Linux/WSL). They install uv deps, enforce Python 3.11 venvs, call `scripts/install_pytorch.py`, and start uvicorn + the React dev server.
 - Manual backend command: `uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000` (after `uv pip install -r requirements.txt` and running `python scripts/install_pytorch.py`).
 - Frontend: `cd frontend && npm install && npm start`. Build for prod with `npm run build`.
-- PyTorch variants: re-run `python scripts/install_pytorch.py` (`--force-cpu` optional) inside `venv` if you need to switch CUDA/CPU builds.
+- PyTorch variants: re-run `python scripts/install_pytorch.py` (supports `--force-cpu`, `--pip-retries`, `--pip-retry-delay`) inside `venv` if you need to switch CUDA/CPU builds.
+- Catalog downloads: `python scripts/download_pass_catalog.py` now accepts `--dry-run` plus shared retry flags (`--retry-attempts`, `--retry-delay`) to preview and stabilize fetches.
 - Catalog API highlights: `POST /search`, `POST /add-product`, `GET /catalog/items`, `DELETE /catalog/{id}`, `GET /stats`. Keep these stable for the React catalog browser.
 
 ## Coding Style
