@@ -96,6 +96,23 @@ feature_extractor = FeatureExtractor(
 )
 catalog_service = CatalogService(feature_extractor, app_config)
 
+
+def _normalize_client_image_path(image_path: str) -> str:
+    path_obj = Path(image_path)
+    if not path_obj.is_absolute():
+        path_obj = (Path.cwd() / path_obj).resolve()
+    try:
+        relative = path_obj.relative_to(Path.cwd())
+    except ValueError:
+        relative = path_obj
+    return relative.as_posix()
+
+
+def _normalize_product_for_client(product: Product) -> dict:
+    data = product.model_dump()
+    data["image_path"] = _normalize_client_image_path(data["image_path"])
+    return data
+
 # Load catalog on startup
 @app.on_event("startup")
 async def startup_event():
@@ -124,7 +141,13 @@ async def search_similar(
         similarity_threshold = parse_similarity_threshold(min_similarity)
 
         results, total_matches = catalog_service.search(query_features, similarity_threshold, requested_top_k)
-        payload = [result.model_dump() for result in results]
+        payload = [
+            {
+                "product": _normalize_product_for_client(result.product),
+                "similarity_score": result.similarity_score,
+            }
+            for result in results
+        ]
         headers = {TOTAL_MATCHES_HEADER: str(total_matches)}
         return JSONResponse(content=payload, headers=headers)
     
@@ -180,7 +203,8 @@ async def get_catalog():
     """
     Get all products in the catalog
     """
-    return catalog_service.get_all_products()
+    products = catalog_service.get_all_products()
+    return [_normalize_product_for_client(product) for product in products]
 
 
 @app.get("/catalog/items", response_model=CatalogPage)
@@ -191,7 +215,10 @@ async def get_catalog_items(
     """
     Paginated catalog browser
     """
-    return catalog_service.get_catalog_page(page, page_size)
+    catalog_page = catalog_service.get_catalog_page(page, page_size)
+    page_data = catalog_page.model_dump()
+    page_data["items"] = [_normalize_product_for_client(item) for item in catalog_page.items]
+    return page_data
 
 @app.get("/stats", response_model=CatalogStats)
 async def get_stats():

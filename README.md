@@ -62,6 +62,44 @@ npm install
 npm start
 ```
 
+## Docker Workflow
+Container support lives under `docker/` 
+
+1. **Copy the env template once** so compose has defaults:
+   ```bash
+   cp docker.env.example docker.env
+   ```
+2. **Build the CPU backend + frontend images** (first run only or when dependencies change):
+   ```bash
+   docker compose build backend frontend
+   ```
+3. **Run production-style services** (FastAPI on `localhost:8000`, Nginx on `localhost:8080`):
+   ```bash
+   docker compose up --build
+   ```
+   or
+
+   **Use hot reload in containers** (backend reload + `frontend-dev` React server on port 3000):
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+   ```
+   The override file disables the Nginx-based `frontend` image and launches the CRA-backed `frontend-dev` container with bind mounts for instant reloads.
+4. **Seed catalog data from inside the backend** (stores under the `catalog-data` volume):
+   ```bash
+   docker compose run --rm backend \
+      python scripts/download_pass_catalog.py --count 2000 --out /app/data/catalog
+   ```
+5. **After seeding catalog data inside containers**, the backend has already built its FAISS index, so restart the backend service to re-index the newly downloaded assets:
+   ```bash
+   docker compose restart backend
+   ```
+   Wait for the `catalog data` log to complete, then reload the UI or call `/stats` to confirm the fresh entries.
+6. **Enable a GPU backend when the host has NVIDIA runtimes available**:
+   ```bash
+   docker compose --profile gpu up backend-gpu
+   ```
+   The `backend-gpu` service builds from `docker/backend/Dockerfile.gpu`, requests GPU devices, and automatically installs the matching CUDA wheel through `scripts/install_pytorch.py`.
+
 ## Getting Started
 1. **Install the prerequisites once**: Python 3.11, the [uv](https://docs.astral.sh/uv/) CLI, and Node.js. All of them have point-and-click installers.
 2. **Double-click `run.bat` (Windows) or run `./run.sh` (macOS/Linux)**. Let it finish; the first run can take a few minutes while AI models download.

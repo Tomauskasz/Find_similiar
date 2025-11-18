@@ -1,0 +1,53 @@
+x-backend-service: &backend-service
+  env_file:
+    - docker.env
+  environment:
+    VISUAL_SEARCH_CATALOG_DIR: ${VISUAL_SEARCH_CATALOG_DIR:-/app/data/catalog}
+    VISUAL_SEARCH_INDEX_BASE_PATH: ${VISUAL_SEARCH_INDEX_BASE_PATH:-/app/data/catalog_index}
+  volumes:
+    - catalog-data:/app/data
+  healthcheck:
+    test: ["CMD-SHELL", "curl -f http://localhost:8000/stats || exit 1"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+  restart: unless-stopped
+
+services:
+  backend:
+    <<: *backend-service
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+  backend-gpu:
+    <<: *backend-service
+    profiles: ["gpu"]
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile.gpu
+    ports:
+      - "${BACKEND_GPU_PORT:-8000}:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    restart: unless-stopped
+
+volumes:
+  catalog-data:
