@@ -82,7 +82,7 @@ npm start
 
 ## How the AI Works
 1. **You choose a photo.** The browser either uses the file you dragged in or, if you are in the catalog browser, quietly downloads the picture you clicked. That single snapshot becomes the “question” you are asking the system.
-2. **The backend “describes” the photo with numbers.** A CLIP model (short for Contrastive Language–Image Pretraining, think of it as a camera with a fantastic memory) studies the picture for unique features like the colors, textures, and shapes in the image, then writes those observations as 512 numbers called an *embedding*. Two images that look alike end up with number lists that look alike.
+2. **The backend “describes” the photo with numbers.** We feed the image through CLIP’s vision encoder (ViT-B/32) to capture colors, textures, and shapes, then convert those observations into a 512-number *embedding*. Two images that look alike end up with number lists that look alike.
 3. **All catalog images already have embeddings.** During startup the server walks through everything inside `data/catalog/`, generates the same type of 512-number description once per image, and saves those in a special file so the work does not have to be repeated every time you search.
 4. **We compare the query embedding with the catalog embeddings.** FAISS (short for Facebook AI Similarity Search), a search tool built for numbers, lines up the new list of 512 numbers against the stored lists and checks how close they are. If the numbers point in the same direction (high cosine similarity), we treat the underlying images as strong visual matches.
 5. **We filter by confidence.** The slider you see in the app sets the minimum similarity score you are comfortable with. Anything below that percentage stays hidden, which means you control whether you see only near-identical matches or a wider mix of “maybe” results.
@@ -90,7 +90,7 @@ npm start
 
 ### Visual Flow
 ```
- [You pick an image] ──▶ [Browser sends file] ──▶ [Backend validates] ──▶ [CLIP embedding]
+ [You pick an image] ──▶ [Browser sends file] ──▶ [Backend validates] ──▶ [CLIP vision encoder]
         │                                                                             │
         │                                     ┌──────────── Catalog preprocessing ────┘
         ▼                                     │
@@ -99,9 +99,11 @@ npm start
 ```
 
 ## Technical Details (Under the Hood)
-- **Model & embeddings**: We use OpenAI’s CLIP ViT-B/32 weights loaded through OpenCLIP. Images are resized, optionally flipped/cropped for augmentation, and normalized before the model produces a 512‑dimension embedding.
+- **Model & embeddings**: We use the vision encoder ViT-B/32 from OpenAI’s CLIP (via OpenCLIP). Only the image tower is loaded—no text encoder—because we just need image-to-image embeddings. Each catalog/query image is resized, optionally flipped/cropped for augmentation, and normalized before the encoder produces a 512‑dimension vector.
+- **Why CLIP ViT-B/32?**: It’s accurate enough to find real matches but small enough to run quickly on everyday CPUs/GPUs. Bigger models like ViT-L/14 need lots of VRAM and slow rebuilds; smaller CNN models miss more matches. ViT-B/32 hits the sweet spot for speed and quality.
 - **Similarity math**: Cosine similarity converts to a 0–1 range for the UI (`(cos + 1) / 2`). The backend counts matches directly in cosine space for accuracy.
 - **Indexing**: `SimilaritySearchEngine` stores product metadata, FAISS IDs, and a feature matrix cache. Rebuilds happen automatically if the disk catalog changes or the cached index is stale. New uploads are inserted at the front of the catalog list so they appear immediately.
+- **Why FAISS?**: It’s a proven vector search engine that handles millions of embeddings, works on CPU or GPU, and speaks cosine similarity without extra code. Other options (Annoy, ScaNN, etc.) either rebuild slowly, skip GPU support, or add heavy dependencies. FAISS keeps indexing and queries fast for our 512-number vectors.
 - **Catalog storage**: Files live under `data/catalog/`. The `/asset/...` endpoint serves them with permissive CORS headers so the React app can display them without duplication.
 - **API surface**: FastAPI routers live in `backend/main.py`. We keep handlers thin and push work into `CatalogService`, `FeatureExtractor`, and utility modules for easier testing.
 - **Frontend state management**: Custom hooks (`useSearchResults`, `useConfidence`, `useCatalogView`, `useBackendStats`) centralize state transitions. Components stay declarative and focus on layout.
@@ -238,20 +240,3 @@ Response header example: `X-Total-Matches: 1182`.
 ## Performance Smoke Tests
 - Catalog rebuild timing: measure how long FAISS rebuilds after running `python scripts/download_pass_catalog.py --count 1 --dry-run --insecure` and starting the backend.
 - Search latency: run `npm start`, upload representative images, and note `/search` response times.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
