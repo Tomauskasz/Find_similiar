@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Callable, Sequence, TypeVar
+from typing import Callable, Optional, Sequence, Type, TypeVar
 
 T = TypeVar("T")
 
@@ -11,8 +11,8 @@ def run_with_retry(
     *,
     attempts: int = 3,
     delay: float = 1.0,
-    exceptions: Sequence[type[BaseException]] = (Exception,),
-    on_retry: Callable[[int, BaseException], None] | None = None,
+    exceptions: Sequence[Type[BaseException]] = (Exception,),
+    on_retry: Optional[Callable[[int, BaseException], None]] = None,
 ) -> T:
     """
     Execute `func`, retrying on failure up to `attempts` times with a fixed delay.

@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from .feature_extractor import FeatureExtractor
 from .models import (
@@ -160,8 +160,8 @@ async def search_similar(
 @app.post("/add-product", response_model=AddProductResponse)
 async def add_product(
     file: UploadFile = File(...),
-    product_id: str | None = Form(None),
-    name: str | None = Form(None),
+    product_id: Optional[str] = Form(None),
+    name: Optional[str] = Form(None),
 ):
     """
     Add a new product to the catalog

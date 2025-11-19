@@ -37,14 +37,6 @@ class AppConfig(BaseSettings):
     search_max_top_k: int = Field(default=1000, description="Upper bound to protect the service.")
     search_min_similarity: float = Field(default=0.8, description="Minimum cosine similarity to treat as a match.")
     search_results_page_size: int = Field(default=10, description="Frontend page size for the results grid.")
-    faiss_use_gpu: bool = Field(
-        default=True,
-        description="Attempt to move the FAISS index to the first available GPU for faster search.",
-    )
-    faiss_gpu_device: int = Field(
-        default=0,
-        description="Device ordinal to use when FAISS GPU acceleration is enabled.",
-    )
 
     # Upload validation
     supported_image_formats: Tuple[str, ...] = Field(
@@ -124,8 +116,6 @@ class AppConfig(BaseSettings):
             raise ValueError("catalog_max_page_size must be >= catalog_default_page_size.")
         if self.search_max_top_k < self.search_default_top_k:
             raise ValueError("search_max_top_k must be >= search_default_top_k.")
-        if self.faiss_gpu_device < 0:
-            raise ValueError("faiss_gpu_device must be >= 0.")
         return self
 
 

@@ -113,7 +113,7 @@ Container support lives under `docker/`
 - Catalog browser with pageable grid (up to 200 images per page), modal previews, uploads, and deletes
 - CLIP ViT-B/32 embeddings (OpenCLIP) + FAISS cosine similarity with configurable minimum confidence
 - Query-time augmentations (flip + crop) for robust matches
-- GPU acceleration for CLIP + FAISS (CUDA/MPS) with automatic fallback to CPU
+- GPU acceleration for CLIP (CUDA/MPS) with automatic fallback to CPU; FAISS always runs on CPU
 - Modern React frontend with live status feedback
 - REST API with interactive docs (`/docs`)
 
@@ -185,8 +185,6 @@ All important knobs live in `backend/config.py` (`AppConfig`). Override anything
 | `search_max_top_k` | `VISUAL_SEARCH_SEARCH_MAX_TOP_K` | `1000` | Must be = default. Guards against unbounded searches. |
 | `search_min_similarity` | `VISUAL_SEARCH_SEARCH_MIN_SIMILARITY` | `0.8` | Must be between `0` and `1`. Minimum cosine similarity. |
 | `search_results_page_size` | `VISUAL_SEARCH_SEARCH_RESULTS_PAGE_SIZE` | `10` | Min `1`. Frontend page size for query results. |
-| `faiss_use_gpu` | `VISUAL_SEARCH_FAISS_USE_GPU` | `true` | If `true`, moves the FAISS index to the configured GPU when the GPU-enabled FAISS build is available; falls back to CPU automatically. |
-| `faiss_gpu_device` | `VISUAL_SEARCH_FAISS_GPU_DEVICE` | `0` | GPU ordinal used for FAISS when GPU acceleration is enabled. Must be `>= 0`. |
 | `supported_image_formats` | `VISUAL_SEARCH_SUPPORTED_IMAGE_FORMATS` | `.jpg,.jpeg,.jfif,.png,.gif,.bmp,.tiff,.tif,.webp` | Comma-separated extensions, automatically normalized to lowercase with leading dots. |
 
 You can override any value by exporting the environment variable or adding it to `.env`:
@@ -334,7 +332,7 @@ DELETE /catalog/custom_123 HTTP/1.1
 ## GPU Acceleration
 `scripts/install_pytorch.py` inspects `nvidia-smi`, chooses the highest CUDA channel your GPU supports (12.4 ⇒ `cu124`, 12.2 ⇒ `cu122`, 12.1 ⇒ `cu121`, 11.8 ⇒ `cu118`), and then iterates through known PyTorch/Torchvision release pairs (`2.5.1/0.20.1`, `2.4.1/0.19.1`, `2.3.1/0.18.1`, `2.1.2/0.16.2`). If a wheel is missing on the channel, it automatically tries the next release before falling back to the CPU index. You can override the detection with `--force-cpu`. At runtime `backend/gpu_utils.py` logs the detected accelerator (CUDA, MPS, or CPU). No TensorFlow/DirectML code remains.
 
-FAISS mirrors that behavior: when `VISUAL_SEARCH_FAISS_USE_GPU=true` (default) and the GPU-enabled FAISS wheel is installed, the backend moves the similarity index onto GPU `VISUAL_SEARCH_FAISS_GPU_DEVICE` (default `0`). If FAISS cannot access a GPU, it silently keeps the CPU index so the service still starts.
+FAISS always runs on CPU; there is no configuration to move the index to GPU, so searches stay fast and predictable even on systems without CUDA-supporting FAISS wheels. The GPU detection above still powers the CLIP feature extractor (PyTorch can use CUDA/MPS when available), and `backend/gpu_utils.py` reports whichever accelerator is visible during startup.
 
 ## Troubleshooting
 - **Python version errors**: ensure `py -3.11` (Windows) or `python3.11` (Unix) is installed; PyTorch wheels are only available for 3.8-3.11.

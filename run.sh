@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 
 set -euo pipefail
 
@@ -47,8 +47,14 @@ VENV_PYTHON="$(pwd)/venv/bin/python"
 echo "Installing Python dependencies..."
 "$UV_CMD" pip install --python "$VENV_PYTHON" -r requirements.txt
 
-echo "Installing PyTorch (CUDA-aware)..."
-"$VENV_PYTHON" scripts/install_pytorch.py
+echo "Installing PyTorch + OpenCLIP (system CUDA handles runtime)..."
+"$UV_CMD" pip install --python "$VENV_PYTHON" \
+    torch==2.8.0 \
+    torchvision==0.23.0 \
+    triton==3.4.0 \
+    open-clip-torch==2.24.0 \
+    --extra-index-url https://download.pytorch.org/whl/cu124 \
+    --extra-index-url https://download.pytorch.org/whl/cpu
 
 echo "Ensuring catalog directory exists..."
 mkdir -p data/catalog

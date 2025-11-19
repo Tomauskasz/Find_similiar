@@ -10,7 +10,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 if __package__ in {None, ""}:
     SCRIPT_DIR = Path(__file__).resolve().parent
@@ -28,7 +28,7 @@ class WheelChannel:
     tag: str
     label: str
     index_url: str
-    min_cuda: Tuple[int, int] | None
+    min_cuda: Optional[Tuple[int, int]]
 
 
 CHANNELS: dict[str, WheelChannel] = {
@@ -64,7 +64,7 @@ def run_pip(args: list[str], *, attempts: int, delay: float) -> None:
     run_with_retry(invoke, attempts=attempts, delay=delay, exceptions=(subprocess.CalledProcessError,))
 
 
-def current_variant() -> tuple[str | None, str | None, bool]:
+def current_variant() -> tuple[Optional[str], Optional[str], bool]:
     try:
         torch = importlib.import_module("torch")
         version = getattr(torch, "__version__", "")
@@ -77,7 +77,7 @@ def current_variant() -> tuple[str | None, str | None, bool]:
         return None, None, False
 
 
-def detect_system_cuda_version() -> tuple[int, int] | None:
+def detect_system_cuda_version() -> Optional[Tuple[int, int]]:
     if shutil.which("nvidia-smi") is None:
         return None
     try:
@@ -90,7 +90,7 @@ def detect_system_cuda_version() -> tuple[int, int] | None:
     return int(match.group(1)), int(match.group(2))
 
 
-def select_cuda_channel(cuda_version: tuple[int, int] | None) -> WheelChannel | None:
+def select_cuda_channel(cuda_version: Optional[Tuple[int, int]]) -> Optional[WheelChannel]:
     if not cuda_version:
         return None
     ordered_channels = [CHANNELS["cu124"], CHANNELS["cu122"], CHANNELS["cu121"], CHANNELS["cu118"]]
@@ -102,9 +102,9 @@ def select_cuda_channel(cuda_version: tuple[int, int] | None) -> WheelChannel | 
 
 @dataclass
 class InstallerConfig:
-    desired_build_tag: str | None
-    current_version: str | None
-    current_flavor: str | None
+    desired_build_tag: Optional[str]
+    current_version: Optional[str]
+    current_flavor: Optional[str]
 
 
 def needs_install(config: InstallerConfig) -> bool:
@@ -141,7 +141,7 @@ def install_spec(channel: WheelChannel, spec: TorchWheelSpec, *, attempts: int, 
     )
 
 
-def install_with_fallback(preferred_tag: str | None, *, attempts: int, delay: float) -> None:
+def install_with_fallback(preferred_tag: Optional[str], *, attempts: int, delay: float) -> None:
     if preferred_tag:
         channel = CHANNELS[preferred_tag]
         try:
@@ -156,7 +156,7 @@ def install_best_available(channel: WheelChannel, *, attempts: int, delay: float
     specs = iter_specs_for_channel(channel.tag)
     if not specs:
         raise InstallationFailed(f"No wheel specs defined for {channel.label}")
-    last_error: subprocess.CalledProcessError | None = None
+    last_error: Optional[subprocess.CalledProcessError] = None
     for spec in specs:
         try:
             install_spec(channel, spec, attempts=attempts, delay=delay)
@@ -175,6 +175,15 @@ def install_best_available(channel: WheelChannel, *, attempts: int, delay: float
 def install_openclip(*, attempts: int, delay: float) -> None:
     print("Installing open-clip-torch...")
     run_pip([f"open-clip-torch=={OPENCLIP_VERSION}", "--no-deps"], attempts=attempts, delay=delay)
+
+
+def check_cuda_via_subprocess() -> bool:
+    cmd = [sys.executable, "-c", "import torch, sys; sys.exit(0 if torch.cuda.is_available() else 1)"]
+    try:
+        subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except subprocess.CalledProcessError:
+        return False
 
 
 def main() -> int:
@@ -222,7 +231,7 @@ def main() -> int:
 
     install_openclip(**pip_kwargs)
 
-    _, _, has_cuda_after = current_variant()
+    has_cuda_after = check_cuda_via_subprocess()
     if desired_channel and not has_cuda_after:
         print("Warning: PyTorch could not access CUDA; running in CPU mode.")
     else:

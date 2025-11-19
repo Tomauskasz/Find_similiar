@@ -1,7 +1,7 @@
 import logging
 import math
 from pathlib import Path
-from typing import Optional, Tuple, List, Set
+from typing import Optional, Tuple, List, Set, Union
 
 import cv2
 import numpy as np
@@ -23,11 +23,7 @@ class CatalogService:
         self.search_engine = self._create_search_engine()
 
     def _create_search_engine(self) -> SimilaritySearchEngine:
-        return SimilaritySearchEngine(
-            feature_dim=self.feature_extractor.feature_dim,
-            use_gpu=self.config.faiss_use_gpu,
-            gpu_device=self.config.faiss_gpu_device,
-        )
+        return SimilaritySearchEngine(feature_dim=self.feature_extractor.feature_dim)
 
     # ------------------------------------------------------------------ #
     # Lifecycle / Index Management
@@ -174,7 +170,7 @@ class CatalogService:
     # ------------------------------------------------------------------ #
     # Internal helpers
     # ------------------------------------------------------------------ #
-    def _resolve_image_path(self, image_path: str | Path) -> Path:
+    def _resolve_image_path(self, image_path: Union[str, Path]) -> Path:
         path = Path(image_path)
         if not path.is_absolute():
             path = (Path.cwd() / path).resolve()

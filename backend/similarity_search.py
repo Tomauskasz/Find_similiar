@@ -2,7 +2,7 @@ import logging
 import pickle
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import cv2
 import faiss
@@ -18,15 +18,11 @@ class SimilaritySearchEngine:
     _COSINE_MIN = -1.0
     _COSINE_MAX = 1.0
 
-    def __init__(self, feature_dim: int = 512, *, use_gpu: bool = False, gpu_device: int = 0):
+    def __init__(self, feature_dim: int = 512):
         """
         Initialize FAISS index for similarity search
         """
         self.feature_dim = feature_dim
-        self.use_gpu = use_gpu
-        self.gpu_device = gpu_device
-        self._gpu_resources = None
-        self._index_on_gpu = False
         self._init_index()
         self.products: List[Product] = []
         self.feature_vectors: Dict[str, np.ndarray] = {}
@@ -41,54 +37,9 @@ class SimilaritySearchEngine:
         # Use cosine similarity via inner product with ID mapping
         base_index = faiss.IndexFlatIP(self.feature_dim)
         cpu_index = faiss.IndexIDMap2(base_index)
-        self.index = self._maybe_move_to_gpu(cpu_index)
-
-    def _maybe_move_to_gpu(self, index: faiss.Index) -> faiss.Index:
-        if not self.use_gpu:
-            self._index_on_gpu = False
-            return index
-        if not hasattr(faiss, "StandardGpuResources"):
-            logger.warning("FAISS GPU acceleration requested but not supported in this build. Falling back to CPU.")
-            self.use_gpu = False
-            self._index_on_gpu = False
-            return index
-        if hasattr(faiss, "get_num_gpus"):
-            try:
-                num_gpus = faiss.get_num_gpus()
-            except Exception:
-                num_gpus = 0
-        else:
-            num_gpus = 0
-        if num_gpus == 0:
-            logger.info("FAISS GPU acceleration requested but no GPUs detected. Falling back to CPU.")
-            self.use_gpu = False
-            self._index_on_gpu = False
-            return index
-        if self.gpu_device >= num_gpus:
-            logger.warning(
-                "Requested FAISS GPU device %s, but only %s device(s) are available. Falling back to CPU.",
-                self.gpu_device,
-                num_gpus,
-            )
-            self.use_gpu = False
-            self._index_on_gpu = False
-            return index
-        try:
-            if self._gpu_resources is None:
-                self._gpu_resources = faiss.StandardGpuResources()
-            gpu_index = faiss.index_cpu_to_gpu(self._gpu_resources, self.gpu_device, index)
-            self._index_on_gpu = True
-            logger.info("FAISS index moved to GPU device %s", self.gpu_device)
-            return gpu_index
-        except Exception as exc:
-            logger.warning("Failed to initialize FAISS GPU acceleration: %s. Falling back to CPU.", exc)
-            self.use_gpu = False
-            self._index_on_gpu = False
-            return index
+        self.index = cpu_index
 
     def _cpu_index_for_persistence(self) -> faiss.Index:
-        if self._index_on_gpu and hasattr(faiss, "index_gpu_to_cpu"):
-            return faiss.index_gpu_to_cpu(self.index)
         return self.index
 
     def reset(self):
@@ -173,7 +124,7 @@ class SimilaritySearchEngine:
     
     def build_index_from_directory(
         self,
-        directory: str | Path,
+        directory: Union[str, Path],
         feature_extractor,
         batch_size: int = 32,
         max_workers: int = 4,
@@ -274,7 +225,7 @@ class SimilaritySearchEngine:
         Load FAISS index and metadata from disk
         """
         cpu_index = faiss.read_index(f"{path}.index")
-        self.index = self._maybe_move_to_gpu(cpu_index)
+        self.index = cpu_index
         with open(f"{path}.pkl", 'rb') as f:
             data = pickle.load(f)
             self.products = data.get('products', [])
