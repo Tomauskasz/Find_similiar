@@ -30,7 +30,7 @@ select_python_cmd() {
 }
 
 if ! select_python_cmd; then
-    echo "Could not find a Python 3.8–3.11 interpreter. Please install Python 3.11 and rerun this script."
+    echo "Could not find a Python 3.8–3.11 interpreter. Please install a supported Python (e.g., 3.10 or 3.11) and rerun this script."
     exit 1
 fi
 

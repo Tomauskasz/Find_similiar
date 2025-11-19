@@ -113,11 +113,13 @@ pause
 goto :eof
 
 :select_python_interpreter
-REM Prefer Python 3.11 from the py launcher
-py -3.11 -V >nul 2>&1
-if %errorlevel%==0 (
-    set "PYTHON_CMD=py -3.11"
-    exit /b 0
+REM Prefer supported versions via the py launcher, highest first
+for %%V in (11 10 9 8) do (
+    py -3.%%V -V >nul 2>&1
+    if !errorlevel!==0 (
+        set "PYTHON_CMD=py -3.%%V"
+        exit /b 0
+    )
 )
 
 for /f "tokens=2 delims= " %%V in ('python -V 2^>^&1') do set "HOST_PY_VERSION=%%V"
@@ -135,7 +137,7 @@ if defined HOST_PY_VERSION (
 )
 
 echo Python 3.8-3.11 is required (PyTorch wheels are not published for newer versions).
-echo Install Python 3.11 and ensure "py -3.11" works, then rerun this script.
+echo Install a supported Python (e.g. 3.10 or 3.11) and ensure "py -3.x" or "python" launches it, then rerun this script.
 exit /b 1
 
 :fail_setup
