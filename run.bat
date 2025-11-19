@@ -85,7 +85,9 @@ if not exist "data\catalog" (
     mkdir data\catalog
 )
 
-if not exist "frontend\node_modules" (
+set "FRONTEND_BIN=%ROOT%frontend\node_modules\.bin\react-scripts"
+
+if not exist "%FRONTEND_BIN%" (
     echo Installing frontend dependencies...
     pushd frontend
     call npm install || goto fail_setup
