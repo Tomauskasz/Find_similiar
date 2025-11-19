@@ -26,7 +26,6 @@ Find visually similar catalog items by uploading an image. The backend extracts 
 | `data/catalog/` | Image library (ignored by git). | Drag and drop pictures here (or use the UI) and the backend will index them on startup. |
 | `data/catalog_index.*` | FAISS cache files (ignored by git). | Cache of the last index build so restarts are faster; deleted automatically when stale. |
 | `.env.example` | Configuration template. | Copy to `.env` to override paths, page sizes, formats, etc. using friendly comments. |
-| `CLEANUP_PLAN.md` / `REGRESSION.md` / `perf_smoke_results.md` | Process docs. | Track what changed, how we test, and performance snapshots. |
 
 ## Prerequisites
 - Python 3.8-3.11 (3.11 recommended). On Windows install Python 3.11 with the `py` launcher and run the scripts from a shell *without* an active virtualenv.
@@ -114,7 +113,7 @@ Container support lives under `docker/`
 - Catalog browser with pageable grid (up to 200 images per page), modal previews, uploads, and deletes
 - CLIP ViT-B/32 embeddings (OpenCLIP) + FAISS cosine similarity with configurable minimum confidence
 - Query-time augmentations (flip + crop) for robust matches
-- GPU acceleration (CUDA/DirectML/MPS) with automatic fallback to CPU
+- GPU acceleration (CUDA/MPS) with automatic fallback to CPU
 - Modern React frontend with live status feedback
 - REST API with interactive docs (`/docs`)
 
@@ -216,9 +215,32 @@ If a provided value breaks the documented constraints (e.g., `VISUAL_SEARCH_SEAR
 - `GET /catalog` - full catalog dump
 - `GET /stats` - frontend boot metadata (page sizes, supported formats, etc.)
 
-### Response Details
+### Request & Response Details
 
-- `POST /search` returns a JSON array of `SearchResult` objects (`product` + `similarity_score`) and emits an `X-Total-Matches` response header indicating how many catalog entries met the requested `min_similarity`. Clients can use that header to show aggregate result counts without fetching another page.
+#### `POST /search`
+**Request:** `multipart/form-data` with the image in the `file` field plus optional `top_k` and `min_similarity` form values (backend defaults live in `backend/config.py`).
+**Request example:**
+```http
+POST /search HTTP/1.1
+Content-Type: multipart/form-data; boundary=------------------boundary123
+
+------------------boundary123
+Content-Disposition: form-data; name="file"; filename="query.jpg"
+Content-Type: image/jpeg
+
+<binary image data>
+------------------boundary123
+Content-Disposition: form-data; name="top_k"
+
+25
+------------------boundary123
+Content-Disposition: form-data; name="min_similarity"
+
+0.85
+------------------boundary123
+```
+**Response:** JSON array of `SearchResult` objects (each contains `product` + `similarity_score`) with an `X-Total-Matches` header reporting how many catalog entries met or exceeded the requested similarity.
+**Response example:**
 ```json
 [
   {
@@ -231,9 +253,32 @@ If a provided value breaks the documented constraints (e.g., `VISUAL_SEARCH_SEAR
   }
 ]
 ```
-Response header example: `X-Total-Matches: 1182`.
+**Header example:** `X-Total-Matches: 1182`
 
-- `POST /add-product` and `DELETE /catalog/{product_id}` both respond with `{ "message": "...", "product_id": "..." }` payloads so the UI can attribute toast/alert text to a specific catalog entry.
+#### `POST /add-product`
+**Request:** `multipart/form-data` with the image under `file`; optionally include `product_id` and `name`.
+**Request example:**
+```http
+POST /add-product HTTP/1.1
+Content-Type: multipart/form-data; boundary=------------------boundary123
+
+------------------boundary123
+Content-Disposition: form-data; name="file"; filename="new.jpg"
+Content-Type: image/png
+
+<binary image data>
+------------------boundary123
+Content-Disposition: form-data; name="product_id"
+
+custom_123
+------------------boundary123
+Content-Disposition: form-data; name="name"
+
+Midnight Parka
+------------------boundary123
+```
+**Response:** `{ "message": "Product added successfully", "product_id": "<catalog id>" }`
+**Response example:**
 ```json
 {
   "message": "Product added successfully",
@@ -241,8 +286,30 @@ Response header example: `X-Total-Matches: 1182`.
 }
 ```
 
-- `GET /stats` returns the current backend configuration snapshot:
+#### `GET /catalog/items`
+**Request:** Query parameters `page` (1-based) and `page_size` (capped by `catalog_max_page_size`) control pagination.
+**Request example:**
+```http
+GET /catalog/items?page=2&page_size=50 HTTP/1.1
+Accept: application/json
+```
+**Response:** `CatalogPage` payload with paged `items`, `total_items`, and `page` metadata (each `item` normalized for client-safe paths).
 
+#### `DELETE /catalog/{product_id}`
+**Request:** Path parameter pointing at the catalog entry to remove.
+**Request example:**
+```http
+DELETE /catalog/custom_123 HTTP/1.1
+```
+**Response:** `{ "message": "Product deleted successfully", "product_id": "<deleted id>" }`
+
+#### `GET /catalog`
+**Request:** Simple GET (no body).
+**Response:** Full list of `Product` objects with client-normalized `image_path` values.
+
+#### `GET /stats`
+**Request:** Simple GET (no body).
+**Response:** Backend configuration snapshot:
 ```json
 {
   "total_products": 128,
@@ -274,7 +341,3 @@ Response header example: `X-Total-Matches: 1182`.
 ## Validation
 - Backend tests: `venv\Scripts\python.exe -m pytest backend/tests`
 - Frontend smoke: `npm start` (verify uploads, catalog browse, find matches)
-
-## Performance Smoke Tests
-- Catalog rebuild timing: measure how long FAISS rebuilds after running `python scripts/download_pass_catalog.py --count 1 --dry-run --insecure` and starting the backend.
-- Search latency: run `npm start`, upload representative images, and note `/search` response times.
