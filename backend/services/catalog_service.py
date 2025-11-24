@@ -1,7 +1,8 @@
 import logging
 import math
+import time
 from pathlib import Path
-from typing import Optional, Tuple, List, Set, Union
+from typing import Optional, Tuple, List, Set, Union, Dict
 
 import cv2
 import numpy as np
@@ -28,11 +29,19 @@ class CatalogService:
     # ------------------------------------------------------------------ #
     # Lifecycle / Index Management
     # ------------------------------------------------------------------ #
-    def startup(self) -> None:
+    def startup(self) -> Dict[str, Union[bool, float, int]]:
         """Ensure catalog directory exists and load or rebuild the FAISS index."""
         self.config.catalog_dir.mkdir(parents=True, exist_ok=True)
-        if not self._load_cached_index_if_valid():
+        start = time.perf_counter()
+        used_cache = self._load_cached_index_if_valid()
+        if not used_cache:
             self._rebuild_index_from_disk()
+        duration = time.perf_counter() - start
+        return {
+            "used_cache": used_cache,
+            "duration_seconds": duration,
+            "catalog_size": self.search_engine.get_catalog_size(),
+        }
     def _cache_index_to_disk(self) -> None:
         if self.config.cache_index_on_startup and self.search_engine.get_catalog_size() > 0:
             self.search_engine.save_index(str(self.config.index_base_path))
@@ -87,7 +96,7 @@ class CatalogService:
         similarity_threshold: float,
         requested_top_k: int,
     ) -> Tuple[List, int]:
-        limit = max(1, min(requested_top_k, self.config.search_max_top_k))
+        limit = max(1, requested_top_k)
         results = self.search_engine.search(query_features, top_k=limit)
         if similarity_threshold > 0:
             results = [
@@ -159,7 +168,6 @@ class CatalogService:
             total_products=self.search_engine.get_catalog_size(),
             model=self.feature_extractor.model_name,
             feature_dim=self.feature_extractor.feature_dim,
-            search_max_top_k=self.config.search_max_top_k,
             search_min_similarity=self.config.search_min_similarity,
             results_page_size=self.config.search_results_page_size,
             supported_formats=list(self.config.supported_image_formats),

@@ -26,6 +26,7 @@ class AppConfig(BaseSettings):
     # Feature extraction settings
     feature_model_name: str = Field(default="ViT-B-32", description="CLIP/OpenCLIP model name.")
     feature_model_pretrained: str = Field(default="openai", description="Pretrained weights identifier.")
+    force_cpu: bool = Field(default=False, description="Force CPU execution even if GPU/MPS is available.")
 
     # Query augmentation settings
     query_use_horizontal_flip: bool = Field(default=True, description="Include a horizontal flip query variant.")
@@ -34,7 +35,6 @@ class AppConfig(BaseSettings):
 
     # Search settings
     search_default_top_k: int = Field(default=200, description="Fallback top-k when clients omit the value.")
-    search_max_top_k: int = Field(default=1000, description="Upper bound to protect the service.")
     search_min_similarity: float = Field(default=0.8, description="Minimum cosine similarity to treat as a match.")
     search_results_page_size: int = Field(default=10, description="Frontend page size for the results grid.")
 
@@ -114,8 +114,6 @@ class AppConfig(BaseSettings):
     def _validate_relationships(self) -> "AppConfig":
         if self.catalog_max_page_size < self.catalog_default_page_size:
             raise ValueError("catalog_max_page_size must be >= catalog_default_page_size.")
-        if self.search_max_top_k < self.search_default_top_k:
-            raise ValueError("search_max_top_k must be >= search_default_top_k.")
         return self
 
 

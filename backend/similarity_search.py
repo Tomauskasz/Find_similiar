@@ -23,6 +23,7 @@ class SimilaritySearchEngine:
         Initialize FAISS index for similarity search
         """
         self.feature_dim = feature_dim
+        self.backend_description = "CPU (FAISS IndexFlatIP)"
         self._init_index()
         self.products: List[Product] = []
         self.feature_vectors: Dict[str, np.ndarray] = {}
@@ -81,28 +82,22 @@ class SimilaritySearchEngine:
         features_2d = normalized.reshape(1, -1).astype("float32")
         faiss_id = self.next_faiss_id
         self.next_faiss_id += 1
-        ids = np.array([faiss_id], dtype='int64')
+        ids = np.array([faiss_id], dtype="int64")
         self.index.add_with_ids(features_2d, ids)
         self._register_product(product, normalized, faiss_id, position=position)
-    
-    def search(
-        self,
-        query_features: np.ndarray,
-        top_k: int = 10
-    ) -> List[SearchResult]:
+
+    def search(self, query_features: np.ndarray, top_k: int = 10) -> List[SearchResult]:
         """
         Search for similar products
         """
         if self.index.ntotal == 0:
             return []
-        
-        # Ensure correct shape and type
+
         query_features = self._normalize_vector(query_features).reshape(1, -1).astype("float32")
-        
+
         scores, ids = self.index.search(query_features, min(top_k, self.index.ntotal))
         similarities = self._to_client_similarity(scores[0])
-        
-        # Build results
+
         results = []
         for faiss_id, similarity in zip(ids[0], similarities):
             if faiss_id < 0:
@@ -116,12 +111,12 @@ class SimilaritySearchEngine:
             results.append(
                 SearchResult(
                     product=product,
-                    similarity_score=float(similarity)
+                    similarity_score=float(similarity),
                 )
             )
-        
+
         return results
-    
+
     def build_index_from_directory(
         self,
         directory: Union[str, Path],
@@ -189,52 +184,56 @@ class SimilaritySearchEngine:
                 self.add_product(product, features)
         except Exception as exc:
             logger.warning("Error extracting batch features: %s", exc)
-    
+
     def get_all_products(self) -> List[Product]:
         """
         Get all products in the catalog
         """
         return self.products
-    
+
     def get_catalog_size(self) -> int:
         """
         Get number of products in catalog
         """
         return len(self.products)
-    
+
+    def describe_backend(self) -> str:
+        """Return a human-readable description of the FAISS execution device."""
+        return self.backend_description
+
     def save_index(self, path: str):
         """
         Save FAISS index and metadata to disk
         """
         index_to_save = self._cpu_index_for_persistence()
         faiss.write_index(index_to_save, f"{path}.index")
-        with open(f"{path}.pkl", 'wb') as f:
+        with open(f"{path}.pkl", "wb") as f:
             pickle.dump(
                 {
-                    'products': self.products,
-                    'feature_vectors': self.feature_vectors,
-                    'product_id_to_faiss_id': self.product_id_to_faiss_id,
-                    'next_faiss_id': self.next_faiss_id,
-                    'feature_dim': self.feature_dim,
+                    "products": self.products,
+                    "feature_vectors": self.feature_vectors,
+                    "product_id_to_faiss_id": self.product_id_to_faiss_id,
+                    "next_faiss_id": self.next_faiss_id,
+                    "feature_dim": self.feature_dim,
                 },
                 f,
             )
-    
+
     def load_index(self, path: str):
         """
         Load FAISS index and metadata from disk
         """
         cpu_index = faiss.read_index(f"{path}.index")
         self.index = cpu_index
-        with open(f"{path}.pkl", 'rb') as f:
+        with open(f"{path}.pkl", "rb") as f:
             data = pickle.load(f)
-            self.products = data.get('products', [])
-            self.feature_vectors = data.get('feature_vectors', {})
+            self.products = data.get("products", [])
+            self.feature_vectors = data.get("feature_vectors", {})
             self.product_lookup = {product.id: product for product in self.products}
-            self.product_id_to_faiss_id = data.get('product_id_to_faiss_id', {})
+            self.product_id_to_faiss_id = data.get("product_id_to_faiss_id", {})
             self.faiss_id_to_product_id = {faiss_id: pid for pid, faiss_id in self.product_id_to_faiss_id.items()}
-            self.next_faiss_id = data.get('next_faiss_id', len(self.products))
-            self.feature_dim = data.get('feature_dim', self.feature_dim)
+            self.next_faiss_id = data.get("next_faiss_id", len(self.products))
+            self.feature_dim = data.get("feature_dim", self.feature_dim)
             self._feature_matrix_cache = None
 
     def get_product(self, product_id: str) -> Optional[Product]:
@@ -244,7 +243,7 @@ class SimilaritySearchEngine:
         faiss_id = self.product_id_to_faiss_id.get(product_id)
         if faiss_id is None:
             return None
-        selector = faiss.IDSelectorArray(np.array([faiss_id], dtype='int64'))
+        selector = faiss.IDSelectorArray(np.array([faiss_id], dtype="int64"))
         self.index.remove_ids(selector)
         removed_product = self.product_lookup.pop(product_id, None)
         self.product_id_to_faiss_id.pop(product_id, None)

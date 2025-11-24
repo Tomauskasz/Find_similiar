@@ -101,7 +101,7 @@ Container support lives under `docker/`
 
 ## Getting Started
 1. **Install the prerequisites once**: Python 3.11, the [uv](https://docs.astral.sh/uv/) CLI, and Node.js. All of them have point-and-click installers.
-2. **Double-click `run.bat` (Windows) or run `./run.sh` (macOS/Linux)**. Let it finish; the first run can take a few minutes while AI models download.
+2. **Double-click `run.bat` (Windows) or run `./run.sh` (macOS/Linux)**. Append `--force-cpu` if you want to benchmark the system without GPU/MPS acceleration. Let the installer finish; the first run can take a few minutes while AI models download.
 3. **Wait for the "Backend" and "Frontend" terminals to report success.** Once the frontend compiles, the script automatically opens http://localhost:3000 for you.
 4. **Populate the catalog.** The first launch shows an empty gallery. Either:
    - Close both terminals to stop the system and then run `python scripts/download_pass_catalog.py --count [number of random images to download]` to fetch random PASS photos into `data/catalog/`. After adding images, rerun `run.bat` / `run.sh` so the backend can index them. 
@@ -178,11 +178,11 @@ All important knobs live in `backend/config.py` (`AppConfig`). Override anything
 | `catalog_max_page_size` | `VISUAL_SEARCH_CATALOG_MAX_PAGE_SIZE` | `200` | Must be = default. Hard limit for catalog pagination. |
 | `feature_model_name` | `VISUAL_SEARCH_FEATURE_MODEL_NAME` | `ViT-B-32` | CLIP/OpenCLIP backbone. |
 | `feature_model_pretrained` | `VISUAL_SEARCH_FEATURE_MODEL_PRETRAINED` | `openai` | Weights identifier passed to OpenCLIP. |
+| `force_cpu` | `VISUAL_SEARCH_FORCE_CPU` | `false` | Force CLIP to run on CPU even if CUDA/MPS is present (useful for benchmarks). |
 | `query_use_horizontal_flip` | `VISUAL_SEARCH_QUERY_USE_HORIZONTAL_FLIP` | `true` | Adds flipped variant during search. |
 | `query_use_center_crop` | `VISUAL_SEARCH_QUERY_USE_CENTER_CROP` | `true` | Adds cropped variant during search. |
 | `query_crop_ratio` | `VISUAL_SEARCH_QUERY_CROP_RATIO` | `0.9` | Must be `0 < ratio = 1`. Size of the retained crop. |
 | `search_default_top_k` | `VISUAL_SEARCH_SEARCH_DEFAULT_TOP_K` | `200` | Min `1`. Used when clients omit `top_k`. |
-| `search_max_top_k` | `VISUAL_SEARCH_SEARCH_MAX_TOP_K` | `1000` | Must be = default. Guards against unbounded searches. |
 | `search_min_similarity` | `VISUAL_SEARCH_SEARCH_MIN_SIMILARITY` | `0.8` | Must be between `0` and `1`. Minimum cosine similarity. |
 | `search_results_page_size` | `VISUAL_SEARCH_SEARCH_RESULTS_PAGE_SIZE` | `10` | Min `1`. Frontend page size for query results. |
 | `supported_image_formats` | `VISUAL_SEARCH_SUPPORTED_IMAGE_FORMATS` | `.jpg,.jpeg,.jfif,.png,.gif,.bmp,.tiff,.tif,.webp` | Comma-separated extensions, automatically normalized to lowercase with leading dots. |
@@ -190,7 +190,6 @@ All important knobs live in `backend/config.py` (`AppConfig`). Override anything
 You can override any value by exporting the environment variable or adding it to `.env`:
 
 ```powershell
-set VISUAL_SEARCH_SEARCH_MAX_TOP_K=50
 set VISUAL_SEARCH_CATALOG_DIR=D:\datasets\catalog
 ```
 
@@ -315,7 +314,6 @@ DELETE /catalog/custom_123 HTTP/1.1
   "total_products": 128,
   "model": "ViT-B-32",
   "feature_dim": 512,
-  "search_max_top_k": 1000,
   "search_min_similarity": 0.8,
   "results_page_size": 10,
   "supported_formats": [".jpg", ".png", "..."],

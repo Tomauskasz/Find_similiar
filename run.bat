@@ -1,12 +1,31 @@
 @echo off
 setlocal EnableDelayedExpansion
 
+set "FORCE_CPU_FLAG="
+set "INSTALL_FORCE_CPU="
+:parse_args
+if "%~1"=="" goto end_parse_args
+if /I "%~1"=="--force-cpu" (
+    set "FORCE_CPU_FLAG=1"
+    shift
+    goto parse_args
+)
+echo Unknown option: %~1
+goto fail_setup
+:end_parse_args
+
 set "UV_CMD=uv"
 set "ROOT=%~dp0"
 set "VENV_DIR=%ROOT%venv"
 set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
 set "PYTHON_CMD=python"
 set "REQ_SNAPSHOT=%VENV_DIR%\requirements.snapshot"
+
+if defined FORCE_CPU_FLAG (
+    set "INSTALL_FORCE_CPU=--force-cpu"
+    set "VISUAL_SEARCH_FORCE_CPU=1"
+    echo Forcing CPU execution for CLIP/FAISS.
+)
 
 if defined VIRTUAL_ENV (
     echo Detected active virtual environment "%VIRTUAL_ENV%".
@@ -77,7 +96,7 @@ if defined NEED_DEP_INSTALL (
 )
 
 echo Installing PyTorch (CUDA-aware)...
-"%VENV_PYTHON%" scripts\install_pytorch.py
+"%VENV_PYTHON%" scripts\install_pytorch.py %INSTALL_FORCE_CPU%
 if errorlevel 1 goto fail_setup
 echo(
 

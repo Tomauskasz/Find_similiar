@@ -73,9 +73,11 @@ def get_device_name():
     return status.description if status.has_accelerator else "CPU"
 
 
-def resolve_torch_device():
+def resolve_torch_device(force_cpu: bool = False):
     """
     Return the best torch.device available alongside a human-readable description.
     """
+    if force_cpu:
+        return torch.device("cpu"), "Forced CPU execution"
     status = _device_status()
     return status.device, status.description

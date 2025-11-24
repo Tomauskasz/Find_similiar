@@ -50,7 +50,7 @@ function App() {
   } = useSearchResults();
 
   const resultsPageSize = backendStats?.results_page_size ?? DEFAULT_PAGE_SIZE;
-  const maxResults = backendStats?.search_max_top_k ?? 100;
+  const maxResults = backendStats?.total_products ?? Number.MAX_SAFE_INTEGER;
   const supportedFormats = backendStats?.supported_formats ?? DEFAULT_SUPPORTED_FORMATS;
   const minSimilarity = confidence;
   const filteredResultsList = useMemo(() => getFilteredResults(confidence), [getFilteredResults, confidence]);

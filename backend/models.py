@@ -43,7 +43,6 @@ class CatalogStats(BaseModel):
     total_products: int
     model: str
     feature_dim: int
-    search_max_top_k: int
     search_min_similarity: float
     results_page_size: int
     supported_formats: List[str]

@@ -1,4 +1,5 @@
 import logging
+import time
 from fastapi import FastAPI, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -52,6 +53,7 @@ SEARCH_SUCCESS_RESPONSE = {
 app = FastAPI(title="Visual Search API", version="1.0.0")
 static_files_app = StaticFiles(directory="data")
 app.mount("/data", static_files_app, name="data")
+APP_BOOT_TIMER = time.perf_counter()
 
 # CORS middleware
 app.add_middleware(
@@ -93,6 +95,7 @@ logger.info(gpu_banner)
 feature_extractor = FeatureExtractor(
     model_name=app_config.feature_model_name,
     pretrained=app_config.feature_model_pretrained,
+    force_cpu=app_config.force_cpu,
 )
 catalog_service = CatalogService(feature_extractor, app_config)
 
@@ -117,7 +120,19 @@ def _normalize_product_for_client(product: Product) -> dict:
 @app.on_event("startup")
 async def startup_event():
     """Load existing catalog and build index"""
-    catalog_service.startup()
+    startup_metrics = catalog_service.startup()
+    total_boot = time.perf_counter() - APP_BOOT_TIMER
+    print(
+        "[Startup] Catalog ready in "
+        f"{startup_metrics['duration_seconds']:.3f}s "
+        f"(cache_used={startup_metrics['used_cache']}, items={startup_metrics['catalog_size']})"
+    )
+    faiss_device = catalog_service.search_engine.describe_backend()
+    print(
+        "[Startup] Backend warmup completed in "
+        f"{total_boot:.3f}s on devices "
+        f"CLIP={feature_extractor.device_description}, FAISS={faiss_device}"
+    )
 
 @app.get("/")
 async def root():
@@ -132,6 +147,9 @@ async def search_similar(
     """
     Upload an image and get visually similar products
     """
+    request_start = time.perf_counter()
+    result_count = 0
+    status_label = "failed"
     try:
         validate_upload_file(file, app_config)
         image = await decode_upload_image(file, failure_detail=SUPPORTED_FORMATS_MESSAGE, failure_status=415)
@@ -148,13 +166,24 @@ async def search_similar(
             }
             for result in results
         ]
+        result_count = len(payload)
         headers = {TOTAL_MATCHES_HEADER: str(total_matches)}
+        status_label = "succeeded"
         return JSONResponse(content=payload, headers=headers)
     
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        elapsed = time.perf_counter() - request_start
+        faiss_device = catalog_service.search_engine.describe_backend()
+        print(
+            "[Search] Request "
+            f"{status_label} in {elapsed:.3f}s on "
+            f"CLIP={feature_extractor.device_description}, FAISS={faiss_device} "
+            f"(results={result_count})"
+        )
 
 
 @app.post("/add-product", response_model=AddProductResponse)
